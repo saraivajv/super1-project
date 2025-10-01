@@ -1,16 +1,31 @@
 import 'dotenv/config';
 import express from 'express';
+import { authMiddleware } from './middleware/auth.middleware.js';
+import authRoutes from './routes/auth.routes.js';
 
 const app = express();
 const port = process.env.BACKEND_PORT || 3000;
 
-app.get('/', (req, res) => {
-  res.json({ message: 'Backend is running!',
-             database: `Connecting to ${process.env.DB_HOST}`,
-             cache: `Connecting to ${process.env.CACHE_HOST}`,
-             search: `Connecting to ${process.env.ELASTICSEARCH_HOST}`
-  });
+// Middlewares
+app.use(express.json());
+
+// Rotas públicas
+app.get('/api', (req, res) => {
+  res.json({ message: 'API is running!' });
 });
+
+// Rotas de Autenticação
+app.use('/api/auth', authRoutes);
+
+// Rota protegida de exemplo
+app.get('/api/profile', authMiddleware, (req, res) => {
+    // Graças ao authMiddleware, temos acesso a req.user
+    res.json({
+        message: "Você está acessando uma rota protegida!",
+        user: req.user
+    });
+});
+
 
 app.listen(port, () => {
   console.log(`Backend server listening on http://localhost:${port}`);
