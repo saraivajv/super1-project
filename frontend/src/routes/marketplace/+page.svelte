@@ -1,22 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api } from '$lib/api';
+  import { api, type Service, type ServiceType, type Variation } from '$lib/api';
   import { authStore } from '$lib/stores/auth.store';
   import { onMount } from 'svelte';
 
-  // --- Tipos de Dados ---
-  type Variation = { id: string; name: string; price: number };
-  type Service = { 
-    id: string; 
-    title: string; 
-    description: string; 
-    service_type: { name: string };
-    provider: { name: string };
-    variations: Variation[];
-  };
-  type ServiceType = { id: string; name: string };
-
-  // --- Estado ---
   let allServices = $state<Service[]>([]);
   let filteredServices = $state<Service[]>([]);
   let serviceTypes = $state<ServiceType[]>([]);
@@ -47,13 +34,10 @@
     }
   }
 
-  // Correção: Usar $effect para reatividade
   $effect(() => {
     let filtered = allServices;
 
     if (selectedTypeId !== 'all') {
-      // Assumindo que a API não filtra, filtramos no frontend
-      // O ideal seria a API fazer isto: api.getServices(selectedTypeId)
       filtered = filtered.filter(service => service.service_type?.id === selectedTypeId);
     }
 
@@ -79,7 +63,6 @@
 </script>
 
 <div class="min-h-screen flex flex-col">
-  <!-- Header -->
   <header class="border-b border-border sticky top-0 bg-background z-10">
     <div class="container mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/marketplace">
@@ -128,14 +111,12 @@
     </div>
   </header>
 
-  <!-- Main Content -->
   <main class="flex-1 container mx-auto px-4 py-8">
     <div class="mb-8">
       <h2 class="text-4xl font-bold mb-2">Descubra Serviços</h2>
       <p class="text-muted-foreground text-lg">Encontre o provedor de serviços perfeito para suas necessidades</p>
     </div>
 
-    <!-- Filters -->
     <div class="flex flex-col md:flex-row gap-4 mb-8">
       <div class="relative flex-1">
         <input
@@ -156,7 +137,6 @@
       </select>
     </div>
 
-    <!-- Services Grid -->
     {#if isLoading}
       <div class="text-center py-12">Carregando serviços...</div>
     {:else if filteredServices.length === 0}
@@ -177,7 +157,6 @@
                 </span>
                 <span class="text-sm text-muted-foreground">por {service.provider?.name || 'Provedor'}</span>
               </div>
-              <!-- Correção: service.title em vez de service.name -->
               <h3 class="text-xl font-bold mb-1">{service.title}</h3>
               <p class="text-sm text-muted-foreground line-clamp-2 mb-4">{service.description}</p>
               
@@ -199,3 +178,4 @@
     {/if}
   </main>
 </div>
+

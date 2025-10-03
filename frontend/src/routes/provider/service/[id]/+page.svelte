@@ -1,62 +1,63 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { api } from '$lib/api';
+  import { api, type AvailabilitySlot, type Service, type Variation } from '$lib/api';
   import { authStore } from '$lib/stores/auth.store';
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
 
-  let service = $state(null);
+  // --- Estado ---
+  let service = $state<Service | null>(null);
   let isLoading = $state(true);
+  
+  // --- Estado do Modal de Reserva ---
   let showBookingDialog = $state(false);
-  let selectedVariation = $state(null);
-  let selectedDate = $state(null);
+  let selectedVariation = $state<Variation | null>(null);
+  let selectedDate = $state<Date | null>(null);
   let selectedTime = $state('');
-  let availableSlots = $state([]);
-  let availability = null;
+  let availableSlots = $state<AvailabilitySlot[]>([]);
+  let isBooking = $state(false);
+
+  const user = authStore.user;
 
   onMount(() => {
-    const unsubscribe = page.subscribe(($page) => {
-      const id = $page.params.id;
-      if (id) {
+    const id = get(page).params.id;
+    if (id) {
         loadService(id);
-      }
-    });
-
-    return unsubscribe;
+    }
   });
 
   async function loadService(id: string) {
+    isLoading = true;
     try {
       const data = await api.getService(id);
       service = data;
-      
-      if (service?.provider?.id) {
-        await loadAvailability(service.provider.id);
-      }
     } catch (error) {
-      console.error('[v0] Error loading service:', error);
+      console.error("Erro ao carregar serviço:", error);
     } finally {
       isLoading = false;
     }
   }
 
-  async function loadAvailability(providerId: string) {
+  async function loadAvailabilitySlots(providerId: string, date: Date) {
     try {
-      const data = await api.getAvailability(providerId);
-      availability = data;
+        const dateString = date.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+        const data = await api.getProviderAvailabilityForDate(providerId, dateString);
+        availableSlots = data;
     } catch (error) {
-      console.error('[v0] No availability set');
+        console.error("Erro ao carregar horários:", error);
+        availableSlots = [];
     }
   }
 
-  function openBookingDialog(variation: any) {
-    if (!authStore.user) {
+  function openBookingDialog(variation: Variation) {
+    if (!$user) {
       alert('Por favor, faça login para reservar este serviço');
       goto('/login');
       return;
     }
 
-    if (authStore.user.role !== 'client') {
+    if ($user.role !== 'client') {
       alert('Apenas clientes podem reservar serviços');
       return;
     }
@@ -64,80 +65,47 @@
     selectedVariation = variation;
     selectedDate = null;
     selectedTime = '';
+    availableSlots = [];
     showBookingDialog = true;
   }
 
-  function generateTimeSlots(date: Date) {
-    if (!availability?.schedule) {
-      return generateDefaultSlots();
+  function handleDateChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.value && service?.provider?.id) {
+        const [year, month, day] = input.value.split('-').map(Number);
+        const date = new Date(Date.UTC(year, month - 1, day));
+        selectedDate = date;
+        selectedTime = '';
+        loadAvailabilitySlots(service.provider.id, date);
     }
-
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
-    const daySchedule = availability.schedule.find((d: any) => d.day === dayName && d.enabled);
-
-    if (!daySchedule) return [];
-
-    const slots = [];
-    const [startHour, startMin] = daySchedule.startTime.split(':').map(Number);
-    const [endHour, endMin] = daySchedule.endTime.split(':').map(Number);
-
-    let currentHour = startHour;
-    let currentMin = startMin;
-
-    while (currentHour < endHour || (currentHour === endHour && currentMin < endMin)) {
-      slots.push({
-        time: `${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`,
-        available: true,
-      });
-
-      currentMin += 30;
-      if (currentMin >= 60) {
-        currentMin = 0;
-        currentHour++;
-      }
-    }
-
-    return slots;
-  }
-
-  function generateDefaultSlots() {
-    const slots = [];
-    for (let hour = 9; hour < 17; hour++) {
-      slots.push({ time: `${String(hour).padStart(2, '0')}:00`, available: true });
-      slots.push({ time: `${String(hour).padStart(2, '0')}:30`, available: true });
-    }
-    return slots;
-  }
-
-  function handleDateChange(date: Date) {
-    selectedDate = date;
-    selectedTime = '';
-    availableSlots = generateTimeSlots(date);
   }
 
   async function confirmBooking() {
-    if (!selectedDate || !selectedTime) {
+    if (!selectedDate || !selectedTime || !selectedVariation) {
       alert('Por favor, selecione data e horário');
       return;
     }
-
+    isBooking = true;
     try {
-      await api.createBooking({
-        serviceId: service.id,
-        variationId: selectedVariation.id,
-        providerId: service.provider.id,
-        date: selectedDate.toISOString().split('T')[0],
-        time: selectedTime,
-        duration: selectedVariation.duration,
-        price: selectedVariation.price,
-      });
+        const [year, month, day] = selectedDate.toISOString().split('T')[0].split('-').map(Number);
+        const [hours, minutes] = selectedTime.split(':').map(Number);
+        const startTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
 
-      alert('Reserva criada com sucesso!');
-      showBookingDialog = false;
-      goto('/client/bookings');
+        await api.createBooking({
+            service_variation_id: selectedVariation.id,
+            start_time: startTime.toISOString(),
+        });
+
+        alert('Reserva criada com sucesso!');
+        showBookingDialog = false;
+        goto('/client/bookings');
     } catch (error) {
-      console.error('[v0] Error creating booking:', error);
-      alert('Erro ao criar reserva');
+      console.error("Erro ao criar reserva:", error);
+      if (error instanceof Error) {
+        alert(`Erro ao criar reserva: ${error.message}`);
+      }
+    } finally {
+        isBooking = false;
     }
   }
 
@@ -145,38 +113,39 @@
     authStore.logout();
     goto('/');
   }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      showBookingDialog = false;
+    }
+  }
+
+  function stopPropagation(event: MouseEvent) {
+    event.stopPropagation();
+  }
 </script>
 
+<svelte:window on:keydown={handleKeydown} />
+
 <div class="min-h-screen flex flex-col">
-   Header 
+  <!-- Header -->
   <header class="border-b border-border sticky top-0 bg-background z-10">
     <div class="container mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/marketplace">
         <h1 class="text-2xl font-bold">ServiceHub</h1>
       </a>
-
       <div class="flex items-center gap-4">
-         Access user directly from authStore.user 
-        {#if authStore.user}
-          {#if authStore.user.role === 'client'}
-            <a
-              href="/client/bookings"
-              class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
+        {#if $user}
+          {#if $user.role === 'client'}
+            <a href="/client/bookings" class="text-sm font-medium hover:underline">
               Minhas Reservas
             </a>
           {/if}
-          <button
-            onclick={logout}
-            class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
+          <button onclick={logout} class="text-sm font-medium hover:underline">
             Sair
           </button>
         {:else}
-          <a
-            href="/login"
-            class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
+          <a href="/login" class="text-sm font-medium hover:underline">
             Entrar
           </a>
         {/if}
@@ -184,77 +153,51 @@
     </div>
   </header>
 
-   Main Content 
+  <!-- Main Content -->
   <main class="flex-1 container mx-auto px-4 py-8">
     {#if isLoading}
       <div class="text-center py-12">Carregando detalhes do serviço...</div>
     {:else if !service}
-      <div class="rounded-lg border border-border bg-card p-12 text-center">
+      <div class="text-center py-12">
         <p class="text-muted-foreground mb-4">Serviço não encontrado</p>
-        <a
-          href="/marketplace"
-          class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
+        <a href="/marketplace" class="text-primary hover:underline">
           Voltar ao Marketplace
         </a>
       </div>
     {:else}
-      <a
-        href="/marketplace"
-        class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
+      <a href="/marketplace" class="text-sm text-muted-foreground hover:text-foreground mb-6 inline-block">
         ← Voltar ao Marketplace
       </a>
 
       <div class="grid gap-6 lg:grid-cols-3">
-         Service Info 
+        <!-- Service Info -->
         <div class="lg:col-span-2 space-y-6">
-          <div class="rounded-lg border border-border bg-card p-6">
-            <div class="flex items-start justify-between mb-2">
-              <span class="rounded-md bg-secondary px-2 py-1 text-xs">{service.serviceType}</span>
-            </div>
-            <h2 class="text-3xl font-bold mb-2">{service.name}</h2>
+          <div class="rounded-lg border bg-card p-6">
+            <span class="rounded-md bg-secondary px-2 py-1 text-xs">{service.service_type.name}</span>
+            <h2 class="text-3xl font-bold mt-2 mb-2">{service.title}</h2>
             <p class="text-base text-muted-foreground">{service.description}</p>
           </div>
-
-          <div class="rounded-lg border border-border bg-card p-6">
-            <h3 class="text-xl font-bold mb-4">Sobre o Provedor</h3>
-            <div class="space-y-2">
-              <p class="font-medium">{service.provider?.name || 'Provedor'}</p>
-              <p class="text-sm text-muted-foreground">{service.provider?.email || ''}</p>
-            </div>
+          <div class="rounded-lg border bg-card p-6">
+            <h3 class="text-xl font-bold mb-4">Sobre o Prestador</h3>
+            <p class="font-medium">{service.provider?.name || 'Prestador'}</p>
+            <p class="text-sm text-muted-foreground">{service.provider?.email || ''}</p>
           </div>
         </div>
 
-         Booking Options 
+        <!-- Booking Options -->
         <div class="space-y-6">
-          <div class="rounded-lg border border-border bg-card p-6">
-            <h3 class="text-xl font-bold mb-2">Opções de Serviço</h3>
-            <p class="text-sm text-muted-foreground mb-4">Escolha a opção que atende suas necessidades</p>
-
+          <div class="rounded-lg border bg-card p-6">
+            <h3 class="text-xl font-bold mb-4">Opções de Serviço</h3>
             <div class="space-y-4">
-              {#each service.variations as variation, index}
-                {#if index > 0}
-                  <div class="border-t border-border my-4"></div>
-                {/if}
-                <div class="space-y-3">
-                  <div>
-                    <h4 class="font-semibold text-lg">{variation.name}</h4>
-                    <div class="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>{variation.duration} minutos</span>
-                    </div>
+              {#each service.variations as variation}
+                <div class="border-t pt-4 first:border-t-0 first:pt-0">
+                  <h4 class="font-semibold text-lg">{variation.name}</h4>
+                  <div class="text-sm text-muted-foreground mt-1">
+                    <span>{variation.duration_minutes} minutos</span>
                   </div>
-                  <div class="flex items-end justify-between">
-                    <div>
-                      <p class="text-3xl font-bold">${variation.price}</p>
-                    </div>
-                    <button
-                      onclick={() => openBookingDialog(variation)}
-                      class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    >
+                  <div class="flex items-end justify-between mt-2">
+                    <p class="text-3xl font-bold">${variation.price}</p>
+                    <button onclick={() => openBookingDialog(variation)} class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                       Reservar Agora
                     </button>
                   </div>
@@ -268,13 +211,22 @@
   </main>
 </div>
 
- Booking Dialog 
+<!-- Booking Dialog -->
 {#if showBookingDialog && selectedVariation}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card p-6">
-      <h3 class="text-2xl font-bold mb-2">Reservar {service.name}</h3>
+  <!-- svelte-ignore a11y_interactive_supports_focus -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    role="dialog"
+    aria-modal="true"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    onclick={() => showBookingDialog = false}
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="w-full max-w-lg rounded-lg border bg-card p-6" onclick={stopPropagation}>
+      <h3 class="text-2xl font-bold mb-2">Reservar {service?.title}</h3>
       <p class="text-sm text-muted-foreground mb-6">
-        {selectedVariation.name} - ${selectedVariation.price} ({selectedVariation.duration} minutos)
+        {selectedVariation.name} - ${selectedVariation.price} ({selectedVariation.duration_minutes} minutos)
       </p>
 
       <div class="space-y-6">
@@ -284,58 +236,48 @@
             id="date"
             type="date"
             min={new Date().toISOString().split('T')[0]}
-            onchange={(e) => handleDateChange(new Date(e.target.value))}
+            onchange={handleDateChange}
             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </div>
 
-        {#if selectedDate && availableSlots.length > 0}
+        {#if selectedDate}
           <div class="space-y-2">
-            <label for="time" class="text-sm font-medium">Selecione o Horário</label>
-            <div class="grid grid-cols-4 gap-2">
-              {#each availableSlots as slot}
-                <button
-                  id="time"
-                  type="button"
-                  onclick={() => selectedTime = slot.time}
-                  disabled={!slot.available}
-                  class={`py-2 px-3 rounded-md border text-sm transition-colors ${
-                    selectedTime === slot.time
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : slot.available
-                        ? 'hover:bg-accent border-input'
-                        : 'opacity-50 cursor-not-allowed border-input'
-                  }`}
-                >
-                  {slot.time}
-                </button>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
-        {#if selectedDate && availableSlots.length === 0}
-          <div class="text-center py-4 text-muted-foreground">
-            Nenhum horário disponível para esta data
+            <!-- svelte-ignore a11y_label_has_associated_control -->
+            <label class="text-sm font-medium">Selecione o Horário</label>
+            {#if availableSlots.length > 0}
+                <div class="grid grid-cols-4 gap-2">
+                  {#each availableSlots as slot}
+                    <button
+                      type="button"
+                      onclick={() => selectedTime = slot.time}
+                      disabled={!slot.available}
+                      class:bg-primary={selectedTime === slot.time}
+                      class:text-primary-foreground={selectedTime === slot.time}
+                      class="py-2 px-3 rounded-md border text-sm transition-colors hover:bg-accent disabled:opacity-50"
+                    >
+                      {slot.time}
+                    </button>
+                  {/each}
+                </div>
+            {:else}
+                 <div class="text-center py-4 text-sm text-muted-foreground">
+                    Nenhum horário disponível para esta data.
+                 </div>
+            {/if}
           </div>
         {/if}
       </div>
 
       <div class="flex gap-2 pt-6">
-        <button
-          onclick={() => showBookingDialog = false}
-          class="flex-1 inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent"
-        >
+        <button onclick={() => showBookingDialog = false} class="flex-1 inline-flex h-10 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent">
           Cancelar
         </button>
-        <button
-          onclick={confirmBooking}
-          disabled={!selectedDate || !selectedTime}
-          class="flex-1 inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none"
-        >
-          Confirmar Reserva
+        <button onclick={confirmBooking} disabled={!selectedDate || !selectedTime || isBooking} class="flex-1 inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">
+          {isBooking ? 'A confirmar...' : 'Confirmar Reserva'}
         </button>
       </div>
     </div>
   </div>
 {/if}
+

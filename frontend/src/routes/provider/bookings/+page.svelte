@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
+  import { api, type Booking } from '$lib/api';
+  import { authStore } from '$lib/stores/auth.store';
   import { onMount } from 'svelte';
-  // Correção: Importar do ficheiro correto
-  import { api } from '$lib/api';
 
-  let bookings = $state([]);
+  let bookings = $state<Booking[]>([]);
   let isLoading = $state(true);
   let activeTab = $state('upcoming');
 
@@ -14,7 +15,6 @@
   async function loadBookings() {
     isLoading = true;
     try {
-      // Correção: Chamar o endpoint correto
       const data = await api.getProviderBookings();
       bookings = data;
     } catch (error) {
@@ -23,22 +23,89 @@
       isLoading = false;
     }
   }
+  
+  // --- FUNÇÕES AUXILIARES ---
+  function getFilteredBookings() {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
 
-  // Correção: A função de atualizar status precisa ser implementada na API
-  async function updateBookingStatus(id: string, status: string) {
-    try {
-      // Nota: Este endpoint ainda precisa ser criado no backend
-      // await api.updateBookingStatus(id, status);
-      alert("Função de atualizar status ainda não implementada na API.");
-      // loadBookings();
-    } catch (error) {
-      console.error('Erro ao atualizar reserva:', error);
+    if (activeTab === 'upcoming') {
+      return bookings.filter(booking => {
+        if (booking.status === 'cancelled' || booking.status === 'completed') return false;
+        if (booking.date > today) return true;
+        if (booking.date === today && booking.start_time >= currentTime) return true;
+        return false;
+      });
+    } else if (activeTab === 'past') {
+      return bookings.filter(booking => {
+        if (booking.status === 'completed') return true;
+        if (booking.date < today) return true;
+        if (booking.date === today && booking.start_time < currentTime) return true;
+        return false;
+      });
+    } else {
+      return bookings.filter(booking => booking.status === 'cancelled');
     }
   }
+  
+  async function updateBookingStatus(id: string, status: Booking['status']) {
+      if (status === 'cancelled' && !confirm('Tem certeza que deseja cancelar esta reserva?')) {
+          return;
+      }
+    try {
+      await api.updateBookingStatus(id, status);
+      await loadBookings();
+    } catch (error) {
+      console.error('Erro ao atualizar reserva:', error);
+      if (error instanceof Error) {
+        alert(`Erro ao atualizar reserva: ${error.message}`);
+      } else {
+        alert('Ocorreu um erro desconhecido ao atualizar a reserva.');
+      }
+    }
+  }
+
+  function formatDate(dateStr: string) {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('pt-BR', { 
+      timeZone: 'UTC',
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  }
+
+  function getStatusColor(status: Booking['status']) {
+    switch (status) {
+      case 'confirmed': return 'bg-green-100 text-green-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      case 'completed': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  }
+
+  function getStatusLabel(status: Booking['status']) {
+    const labels = {
+      confirmed: 'Confirmada',
+      pending: 'Pendente',
+      cancelled: 'Cancelada',
+      completed: 'Concluída',
+    };
+    return labels[status];
+  }
+
+  function logout() {
+    authStore.logout();
+    goto('/');
+  }
+
+  let filteredBookings = $derived(getFilteredBookings());
 </script>
 
 <div class="min-h-screen flex flex-col">
-   Header 
   <header class="border-b border-border">
     <div class="container mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/provider/dashboard">
@@ -61,14 +128,12 @@
     </div>
   </header>
 
-   Main Content 
   <main class="flex-1 container mx-auto px-4 py-8">
     <div class="mb-8">
       <h2 class="text-3xl font-bold mb-2">Reservas Recebidas</h2>
       <p class="text-muted-foreground">Gerencie as reservas dos seus serviços</p>
     </div>
 
-     Tabs 
     <div class="mb-6">
       <div class="flex gap-2 border-b border-border">
         <button
@@ -89,7 +154,7 @@
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          Passadas
+          Passadas & Concluídas
         </button>
         <button
           onclick={() => activeTab = 'cancelled'}
@@ -104,7 +169,6 @@
       </div>
     </div>
 
-     Bookings List 
     {#if isLoading}
       <div class="text-center py-12">Carregando reservas...</div>
     {:else if filteredBookings.length === 0}
@@ -113,7 +177,7 @@
           {#if activeTab === 'upcoming'}
             Você não tem reservas próximas
           {:else if activeTab === 'past'}
-            Você não tem reservas passadas
+            Você não tem reservas passadas ou concluídas
           {:else}
             Você não tem reservas canceladas
           {/if}
@@ -128,7 +192,7 @@
                 <div class="flex-1">
                   <div class="flex items-start justify-between mb-2">
                     <div>
-                      <h3 class="text-xl font-bold">{booking.service?.name || 'Serviço'}</h3>
+                      <h3 class="text-xl font-bold">{booking.service_variation.service.title || 'Serviço'}</h3>
                       <p class="text-sm text-muted-foreground">
                         Cliente: {booking.client?.name || 'Cliente'}
                       </p>
@@ -143,22 +207,16 @@
 
                   <div class="space-y-2 mt-4">
                     <div class="flex items-center gap-2 text-sm">
-                      <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
+                      <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       <span>{formatDate(booking.date)}</span>
                     </div>
                     <div class="flex items-center gap-2 text-sm">
-                      <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>{booking.time} ({booking.duration} minutos)</span>
+                       <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      <span>{booking.start_time.substring(0,5)} ({booking.service_variation.duration_minutes} minutos)</span>
                     </div>
                     <div class="flex items-center gap-2 text-sm">
-                      <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span class="font-medium">${booking.price}</span>
+                      <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      <span class="font-medium">${booking.service_variation.price}</span>
                     </div>
                   </div>
                 </div>
@@ -200,3 +258,4 @@
     {/if}
   </main>
 </div>
+

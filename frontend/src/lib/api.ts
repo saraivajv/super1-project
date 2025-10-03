@@ -25,6 +25,61 @@ interface RegisterResponse {
     };
 }
 
+export interface ServiceType {
+    id: string;
+    name: string;
+}
+
+export interface Variation {
+    id: string;
+    name: string;
+    price: number;
+    duration_minutes: number;
+}
+
+export interface Service {
+    id: string;
+    title: string;
+    description: string;
+    provider: { id: string; name: string; email?: string };
+    service_type: ServiceType;
+    variations: Variation[];
+}
+
+export interface Booking {
+    id: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    status: 'confirmed' | 'pending' | 'cancelled' | 'completed';
+    service_variation: {
+        price: number;
+        duration_minutes: number;
+        service: {
+            title: string;
+            provider: {
+                name: string;
+            }
+        }
+    };
+    client: {
+        name: string;
+        email: string;
+    };
+}
+
+export interface Availability {
+    id: string;
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+}
+
+export interface AvailabilitySlot {
+    time: string;
+    available: boolean;
+}
+
 
 // --- LÓGICA DE REQUISIÇÃO ---
 interface RequestOptions extends RequestInit {
@@ -96,54 +151,77 @@ export const api = {
   // --- ROTAS PÚBLICAS (Marketplace) ---
   getServices: (serviceTypeId?: string) => {
     const query = serviceTypeId ? `?type=${serviceTypeId}` : "";
-    return request(`/services${query}`, { requiresAuth: false });
+    return request<Service[]>(`/services${query}`, { requiresAuth: false });
   },
-  getService: (id: string) => request(`/services/${id}`, { requiresAuth: false }),
-  getServiceTypes: () => request('/service-types', { requiresAuth: false }),
+  getService: (id: string) => request<Service>(`/services/${id}`, { requiresAuth: false }),
+  getServiceTypes: () => request<ServiceType[]>('/service-types', { requiresAuth: false }),
 
   // --- ROTAS DO PRESTADOR ---
-  getProviderServices: () => request(`/provider/services`),
+  getProviderServices: () => request<Service[]>('/provider/services'),
+  
   createService: (data: { title: string, description: string, service_type_id: string }) =>
-    request("/provider/services", {
+    request<Service>("/provider/services", {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
   updateService: (id: string, data: { title: string, description: string, service_type_id: string }) =>
-    request(`/provider/services/${id}`, {
+    request<Service>(`/provider/services/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
   deleteService: (id: string) =>
     request(`/provider/services/${id}`, {
       method: "DELETE",
     }),
 
   createServiceVariation: (serviceId: string, data: { name: string, price: number, duration_minutes: number }) =>
-    request(`/provider/services/${serviceId}/variations`, {
+    request<Variation>(`/provider/services/${serviceId}/variations`, {
         method: 'POST',
         body: JSON.stringify(data),
     }),
+    
   updateServiceVariation: (variationId: string, data: { name: string, price: number, duration_minutes: number }) =>
-    request(`/provider/variations/${variationId}`, {
+    request<Variation>(`/provider/variations/${variationId}`, {
         method: 'PUT',
         body: JSON.stringify(data),
     }),
+
   deleteServiceVariation: (variationId: string) =>
     request(`/provider/variations/${variationId}`, {
         method: 'DELETE',
     }),
-    
-  getProviderAvailabilities: () => request(`/provider/availabilities`),
+
+  getProviderAvailabilities: () => request<Availability[]>('/provider/availabilities'),
+  
   createProviderAvailability: (data: { day_of_week: number, start_time: string, end_time: string }) =>
-    request("/provider/availabilities", {
+    request<Availability>("/provider/availabilities", {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
   deleteProviderAvailability: (id: string) =>
     request(`/provider/availabilities/${id}`, {
         method: 'DELETE'
     }),
 
-  getProviderBookings: () => request("/provider/bookings"),
-}
+  // --- ROTAS DE RESERVA (BOOKING) ---
+  getProviderBookings: () => request<Booking[]>("/provider/bookings"),
+  getClientBookings: () => request<Booking[]>("/client/bookings"),
+  updateBookingStatus: (id: string, status: string) =>
+    request(`/bookings/${id}/cancel`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
+    
+  getProviderAvailabilityForDate: (providerId: string, date: string) => 
+    request<AvailabilitySlot[]>(`/providers/${providerId}/availability?date=${date}`),
 
+  createBooking: (data: { service_variation_id: string; start_time: string }) =>
+    request<Booking>('/bookings', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        requiresAuth: true,
+    }),
+}

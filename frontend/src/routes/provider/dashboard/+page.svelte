@@ -1,34 +1,11 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
-// CORREÇÃO: Importar a store do local correto.
-  import { api } from '$lib/api';
+  import { api, type Availability, type Service, type ServiceType, type Variation } from '$lib/api';
   import { authStore } from '$lib/stores/auth.store';
+  import { onMount } from 'svelte';
 
-  // --- Tipos de Dados (para alinhar com a nossa API) ---
-  type Variation = {
-    id?: string;
-    name: string;
-    price: number;
-    duration_minutes: number;
-  };
-  type Service = {
-    id: string;
-    title: string;
-    description: string;
-    service_type: { id: string; name: string };
-    variations: Variation[];
-  };
-  type ServiceType = {
-    id: string;
-    name: string;
-  };
-  type Availability = {
-    id: string;
-    day_of_week: number; // 0 (Domingo) a 6 (Sábado)
-    start_time: string;
-    end_time: string;
-  };
+  // --- Tipos de Dados ---
+  type VariationFormData = Omit<Variation, 'id'> & { id?: string };
 
   // --- Estado da Página ---
   let activeTab = $state<'services' | 'availability'>('services');
@@ -43,10 +20,9 @@
   let serviceTitle = $state('');
   let serviceDescription = $state('');
   let serviceTypeId = $state('');
-  let serviceVariations = $state<Variation[]>([{ name: '', price: 0, duration_minutes: 30 }]);
+  let serviceVariations = $state<VariationFormData[]>([{ name: '', price: 0, duration_minutes: 30 }]);
 
   // --- Estado da Disponibilidade ---
-  // Mapeia o dia da semana para o formato da nossa UI
   const weekDays = [
       { name: 'Domingo', number: 0 }, { name: 'Segunda-feira', number: 1 },
       { name: 'Terça-feira', number: 2 }, { name: 'Quarta-feira', number: 3 },
@@ -54,7 +30,6 @@
       { name: 'Sábado', number: 6 }
   ];
 
-  // Estrutura de dados para a UI da agenda
   let scheduleUi = $state(
     weekDays.map(day => ({
       name: day.name,
@@ -62,7 +37,7 @@
       enabled: false,
       startTime: '09:00',
       endTime: '17:00',
-      id: null as string | null // Para guardar o ID da disponibilidade existente
+      id: null as string | null
     }))
   );
   
@@ -73,7 +48,6 @@
   async function loadInitialData() {
     isLoading = true;
     try {
-      // Carrega tudo em paralelo para maior performance
       const [servicesData, serviceTypesData, availabilitiesData] = await Promise.all([
         api.getProviderServices(),
         api.getServiceTypes(),
@@ -82,10 +56,7 @@
       services = servicesData;
       serviceTypes = serviceTypesData;
       availabilities = availabilitiesData;
-
-      // Sincroniza a agenda da API com a nossa UI
       updateScheduleUiFromApi();
-
     } catch (error) {
       console.error("Erro ao carregar dados do dashboard:", error);
     } finally {
@@ -98,7 +69,7 @@
           const apiAvailability = availabilities.find(a => a.day_of_week === dayUi.number);
           if (apiAvailability) {
               dayUi.enabled = true;
-              dayUi.startTime = apiAvailability.start_time.substring(0, 5); // Formata para HH:mm
+              dayUi.startTime = apiAvailability.start_time.substring(0, 5);
               dayUi.endTime = apiAvailability.end_time.substring(0, 5);
               dayUi.id = apiAvailability.id;
           } else {
@@ -114,7 +85,6 @@
       serviceTitle = service.title;
       serviceDescription = service.description;
       serviceTypeId = service.service_type.id;
-      // Clona as variações para evitar mutação direta
       serviceVariations = service.variations.map(v => ({...v}));
     } else {
       editingService = null;
@@ -126,6 +96,11 @@
     showServiceDialog = true;
   }
 
+  async function handleSaveService(event: SubmitEvent) {
+    event.preventDefault();
+    await saveService();
+  }
+
   async function saveService() {
     try {
       const serviceData = {
@@ -135,23 +110,24 @@
       };
 
       if (editingService) {
-        // Atualiza o serviço principal
         await api.updateService(editingService.id, serviceData);
-        // Lógica para atualizar/adicionar/remover variações seria mais complexa.
-        // Por simplicidade, vamos apenas recarregar os dados.
+        // NOTA: A lógica de edição de variações individuais seria mais complexa.
+        // Para este projeto, a edição de variações pode ser feita apagando e recriando o serviço.
       } else {
-        // Cria o novo serviço
         const newService = await api.createService(serviceData);
-        // Cria cada variação associada ao novo serviço
-        for (const variation of serviceVariations) {
-          await api.createServiceVariation(newService.id, variation);
+        if (newService && newService.id) {
+            for (const variation of serviceVariations) {
+              await api.createServiceVariation(newService.id, variation);
+            }
         }
       }
       showServiceDialog = false;
-      await loadInitialData(); // Recarrega tudo para mostrar as mudanças
+      await loadInitialData();
     } catch (error) {
       console.error("Erro ao salvar serviço:", error);
-      alert(`Erro ao salvar serviço: ${error.message}`);
+      if (error instanceof Error) {
+        alert(`Erro ao salvar serviço: ${error.message}`);
+      }
     }
   }
 
@@ -159,7 +135,7 @@
     if (!confirm('Tem certeza que deseja apagar este serviço e todas as suas variações?')) return;
     try {
       await api.deleteService(id);
-      await loadInitialData(); // Recarrega os dados
+      await loadInitialData();
     } catch (error) {
       console.error("Erro ao apagar serviço:", error);
     }
@@ -167,36 +143,27 @@
 
   async function saveAvailability() {
     try {
-        // CORREÇÃO: Lógica para sincronizar a UI com a API
-        // Percorremos cada dia da semana na UI
         for (const dayUi of scheduleUi) {
             const apiAvailability = availabilities.find(a => a.day_of_week === dayUi.number);
-
-            if (dayUi.enabled) {
-                // Se o dia está marcado na UI
-                if (apiAvailability) {
-                    // E já existe na API, não fazemos nada (poderíamos implementar update aqui)
-                } else {
-                    // Se não existe na API, criamos
-                    await api.createProviderAvailability({
-                        day_of_week: dayUi.number,
-                        start_time: dayUi.startTime,
-                        end_time: dayUi.endTime,
-                    });
-                }
-            } else {
-                // Se o dia NÃO está marcado na UI
-                if (apiAvailability) {
-                    // Mas existe na API, então apagamos
-                    await api.deleteProviderAvailability(apiAvailability.id);
-                }
+            if (dayUi.enabled && !apiAvailability) {
+                await api.createProviderAvailability({
+                    day_of_week: dayUi.number,
+                    start_time: dayUi.startTime,
+                    end_time: dayUi.endTime,
+                });
+            } else if (!dayUi.enabled && apiAvailability) {
+                await api.deleteProviderAvailability(apiAvailability.id);
             }
+            // NOTA: A lógica de ATUALIZAÇÃO de um horário existente não está implementada
+            // Para este projeto, o fluxo é apagar (desmarcando) e criar (marcando).
         }
         alert('Disponibilidade atualizada com sucesso!');
-        await loadInitialData(); // Recarrega para obter os novos IDs
+        await loadInitialData();
     } catch (error) {
       console.error("Erro ao salvar disponibilidade:", error);
-      alert(`Erro ao salvar disponibilidade: ${error.message}`);
+       if (error instanceof Error) {
+        alert(`Erro ao salvar disponibilidade: ${error.message}`);
+       }
     }
   }
 
@@ -215,7 +182,6 @@
 </script>
 
 <div class="min-h-screen flex flex-col">
-  <!-- Header -->
   <header class="border-b border-border">
     <div class="container mx-auto px-4 py-4 flex items-center justify-between">
       <h1 class="text-2xl font-bold">ServiceHub</h1>
@@ -236,14 +202,12 @@
     </div>
   </header>
 
-  <!-- Main Content -->
   <main class="flex-1 container mx-auto px-4 py-8">
     <div class="mb-8">
       <h2 class="text-3xl font-bold mb-2">Dashboard do Prestador</h2>
       <p class="text-muted-foreground">Gerencie seus serviços e disponibilidade</p>
     </div>
 
-    <!-- Tabs -->
     <div class="mb-6">
       <div class="flex gap-2 border-b border-border">
         <button
@@ -269,7 +233,6 @@
       </div>
     </div>
 
-    <!-- Services Tab -->
     {#if activeTab === 'services'}
       <div class="space-y-6">
         <div class="flex justify-between items-center">
@@ -304,7 +267,6 @@
                 <div class="p-6">
                   <div class="flex justify-between items-start mb-4">
                     <div>
-                      <!-- CORREÇÃO: Usar 'title' -->
                       <h4 class="text-xl font-bold">{service.title}</h4>
                       <p class="text-sm text-muted-foreground mt-1">{service.description}</p>
                     </div>
@@ -313,15 +275,18 @@
                   
                   <div class="space-y-2 mb-4">
                     <p class="text-sm font-medium">Variações:</p>
-                    {#each service.variations as variation}
-                      <div class="flex justify-between text-sm">
-                        <span>{variation.name}</span>
-                        <span class="text-muted-foreground">
-                          <!-- CORREÇÃO: Usar 'duration_minutes' -->
-                          ${variation.price} • {variation.duration_minutes}min
-                        </span>
-                      </div>
-                    {/each}
+                    {#if service.variations && service.variations.length > 0}
+                        {#each service.variations as variation}
+                          <div class="flex justify-between text-sm">
+                            <span>{variation.name}</span>
+                            <span class="text-muted-foreground">
+                              ${variation.price} • {variation.duration_minutes}min
+                            </span>
+                          </div>
+                        {/each}
+                    {:else}
+                        <p class="text-sm text-muted-foreground">Nenhuma variação adicionada.</p>
+                    {/if}
                   </div>
 
                   <div class="flex gap-2">
@@ -346,7 +311,6 @@
       </div>
     {/if}
 
-    <!-- Availability Tab -->
     {#if activeTab === 'availability'}
       <div class="space-y-6">
         <div>
@@ -357,7 +321,7 @@
           <div class="space-y-4">
             {#each scheduleUi as day, index}
               <div class="flex items-center gap-4 p-4 border border-border rounded-lg">
-                <div class="flex items-center space-x-2 w-32">
+                <div class="flex items-center space-x-2 w-40">
                   <input
                     type="checkbox"
                     id={`day-${index}`}
@@ -408,7 +372,6 @@
   </main>
 </div>
 
-<!-- Service Dialog -->
 {#if showServiceDialog}
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
     <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card p-6">
@@ -416,7 +379,7 @@
         {editingService ? 'Editar Serviço' : 'Novo Serviço'}
       </h3>
 
-      <form onsubmit|preventDefault={saveService} class="space-y-4">
+      <form onsubmit={handleSaveService} class="space-y-4">
         <div class="space-y-2">
           <label for="title" class="text-sm font-medium">Nome do Serviço</label>
           <input
@@ -450,23 +413,23 @@
             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="" disabled>Selecione um tipo</option>
-            <!-- CORREÇÃO: Popular dinamicamente -->
             {#each serviceTypes as type}
                 <option value={type.id}>{type.name}</option>
             {/each}
           </select>
         </div>
-
+        
+        {#if !editingService}
         <div class="space-y-3">
           <div class="flex justify-between items-center">
-            <span class="text-sm font-medium">Variações do Serviço</span>
-            <button
-              type="button"
-              onclick={addVariation}
-              class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm transition-colors hover:bg-accent"
-            >
-              + Adicionar Variação
-            </button>
+            <span class="text-sm font-medium">Variações do Serviço (para novos serviços)</span>
+              <button
+                type="button"
+                onclick={addVariation}
+                class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm transition-colors hover:bg-accent"
+              >
+                + Adicionar Variação
+              </button>
           </div>
 
           {#each serviceVariations as variation, index}
@@ -495,7 +458,6 @@
                 />
               </div>
               <div class="w-28 space-y-2">
-                <!-- CORREÇÃO: Usar 'duration_minutes' -->
                 <label for={`var-duration-${index}`} class="text-sm">Duração (min)</label>
                 <input
                   id={`var-duration-${index}`}
@@ -519,6 +481,7 @@
             </div>
           {/each}
         </div>
+        {/if}
 
         <div class="flex gap-2 pt-4">
           <button
@@ -539,4 +502,3 @@
     </div>
   </div>
 {/if}
-
