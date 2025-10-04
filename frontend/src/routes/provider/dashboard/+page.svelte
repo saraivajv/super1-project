@@ -459,7 +459,6 @@
                 {#each serviceVariations as variation, index}
                     <div class="flex gap-2 items-end p-3 border rounded-lg">
                         <div class="flex-1 space-y-2">
-                            <!-- CORREÇÃO: Adicionamos 'for' e 'id' para acessibilidade -->
                             <label for={`edit-var-name-${index}`} class="text-xs">Nome</label>
                             <input id={`edit-var-name-${index}`} type="text" bind:value={variation.name} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
                         </div>
@@ -471,7 +470,6 @@
                             <label for={`edit-var-duration-${index}`} class="text-xs">Duração (min)</label>
                             <input id={`edit-var-duration-${index}`} type="number" bind:value={variation.duration_minutes} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
                         </div>
-                        <!-- CORREÇÃO: Adicionamos uma verificação para garantir que variation.id existe -->
                         <button type="button" onclick={() => { if(variation.id) handleUpdateVariation(variation.id, index); }} class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-3 text-sm text-secondary-foreground transition-colors hover:bg-secondary/80">Salvar</button>
                         <button type="button" onclick={() => { if(variation.id) handleDeleteVariation(variation.id); }} class="inline-flex h-9 w-9 items-center justify-center rounded-md bg-destructive text-sm text-destructive-foreground transition-colors hover:bg-destructive/80">×</button>
                     </div>

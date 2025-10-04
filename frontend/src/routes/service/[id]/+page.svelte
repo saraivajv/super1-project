@@ -205,16 +205,16 @@
   </main>
 </div>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
 {#if showBookingDialog && selectedVariation}
-  <!-- svelte-ignore a11y_interactive_supports_focus -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     role="dialog"
     aria-modal="true"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
     onclick={() => showBookingDialog = false}
   >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="w-full max-w-lg rounded-lg border bg-card p-6" onclick={stopPropagation}>
       <h3 class="text-2xl font-bold mb-2">Reservar {service?.title}</h3>
       <p class="text-sm text-muted-foreground mb-6">
@@ -222,7 +222,7 @@
       </p>
 
       <div class="space-y-6">
-        <div class="space-y-2">
+        <div class="relative space-y-2">
           <label for="date" class="text-sm font-medium">Selecione a Data</label>
           <input
             id="date"
@@ -237,16 +237,15 @@
           <div class="space-y-2">
             <!-- svelte-ignore a11y_label_has_associated_control -->
             <label class="text-sm font-medium">Selecione o Horário</label>
-            {#if availableSlots.length > 0}
+            {#if availableSlots.some(slot => slot.available)}
                 <div class="grid grid-cols-4 gap-2">
-                  {#each availableSlots as slot}
+                  {#each availableSlots.filter(slot => slot.available) as slot}
                     <button
                       type="button"
                       onclick={() => selectedTime = slot.time}
-                      disabled={!slot.available}
                       class:bg-primary={selectedTime === slot.time}
                       class:text-primary-foreground={selectedTime === slot.time}
-                      class="py-2 px-3 rounded-md border text-sm transition-colors hover:bg-accent disabled:opacity-50"
+                      class="py-2 px-3 rounded-md border text-sm transition-colors hover:bg-accent"
                     >
                       {slot.time}
                     </button>

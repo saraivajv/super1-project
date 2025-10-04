@@ -4,6 +4,7 @@
   import { authStore } from '$lib/stores/auth.store';
   import { onMount } from 'svelte';
 
+  // --- Estado ---
   let bookings = $state<Booking[]>([]);
   let isLoading = $state(true);
   let activeTab = $state('upcoming');
@@ -24,7 +25,22 @@
     }
   }
   
-  // --- FUNÇÕES AUXILIARES ---
+  async function updateBookingStatus(id: string, status: Booking['status']) {
+      if (status === 'cancelled' && !confirm('Tem certeza que deseja cancelar esta reserva?')) {
+          return;
+      }
+    try {
+      await api.updateBookingStatus(id, status);
+      await loadBookings();
+    } catch (error) {
+      console.error('Erro ao atualizar reserva:', error);
+      if (error instanceof Error) {
+        alert(`Erro ao atualizar reserva: ${error.message}`);
+      }
+    }
+  }
+
+  // --- Funções Auxiliares ---
   function getFilteredBookings() {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
@@ -46,23 +62,6 @@
       });
     } else {
       return bookings.filter(booking => booking.status === 'cancelled');
-    }
-  }
-  
-  async function updateBookingStatus(id: string, status: Booking['status']) {
-      if (status === 'cancelled' && !confirm('Tem certeza que deseja cancelar esta reserva?')) {
-          return;
-      }
-    try {
-      await api.updateBookingStatus(id, status);
-      await loadBookings();
-    } catch (error) {
-      console.error('Erro ao atualizar reserva:', error);
-      if (error instanceof Error) {
-        alert(`Erro ao atualizar reserva: ${error.message}`);
-      } else {
-        alert('Ocorreu um erro desconhecido ao atualizar a reserva.');
-      }
     }
   }
 
@@ -118,10 +117,7 @@
         >
           Dashboard
         </a>
-        <button
-          onclick={logout}
-          class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-        >
+        <button onclick={logout} class="text-sm font-medium hover:underline">
           Sair
         </button>
       </div>
@@ -172,15 +168,9 @@
     {#if isLoading}
       <div class="text-center py-12">Carregando reservas...</div>
     {:else if filteredBookings.length === 0}
-      <div class="rounded-lg border border-border bg-card p-12 text-center">
+      <div class="rounded-lg border bg-card p-12 text-center">
         <p class="text-muted-foreground mb-4">
-          {#if activeTab === 'upcoming'}
-            Você não tem reservas próximas
-          {:else if activeTab === 'past'}
-            Você não tem reservas passadas ou concluídas
-          {:else}
-            Você não tem reservas canceladas
-          {/if}
+          Nenhum resultado para esta aba.
         </p>
       </div>
     {:else}
@@ -211,8 +201,8 @@
                       <span>{formatDate(booking.date)}</span>
                     </div>
                     <div class="flex items-center gap-2 text-sm">
-                       <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      <span>{booking.start_time.substring(0,5)} ({booking.service_variation.duration_minutes} minutos)</span>
+                      <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      <span>{new Date(booking.start_time).toLocaleTimeString('pt-BR', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })} ({booking.service_variation.duration_minutes} minutos)</span>
                     </div>
                     <div class="flex items-center gap-2 text-sm">
                       <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

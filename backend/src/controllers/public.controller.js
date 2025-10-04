@@ -64,8 +64,8 @@ export const getAvailableSlots = async (req, res) => {
 
             let isOverlapping = false;
             for (const booking of existingBookings) {
-                const bookingStartTime = new Date(`${date}T${booking.start_time}`);
-                const bookingEndTime = new Date(`${date}T${booking.end_time}`);
+                const bookingStartTime = new Date(booking.start_time);
+                const bookingEndTime = new Date(booking.end_time);
                 if (slotStartTime < bookingEndTime && slotEndTime > bookingStartTime) {
                     isOverlapping = true;
                     break;
@@ -73,7 +73,7 @@ export const getAvailableSlots = async (req, res) => {
             }
             
             slots.push({
-                time: slotStartTime.toUTCString().substring(17, 22), // Formato HH:mm
+                time: slotStartTime.toUTCString().substring(17, 22),
                 available: !isOverlapping,
             });
 
@@ -87,3 +87,4 @@ export const getAvailableSlots = async (req, res) => {
         res.status(500).json({ message: "Erro ao calcular horários disponíveis.", error: error.message });
     }
 };
+
