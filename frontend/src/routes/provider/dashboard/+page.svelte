@@ -22,6 +22,8 @@
   let serviceTypeId = $state('');
   let serviceVariations = $state<VariationFormData[]>([{ name: '', price: 0, duration_minutes: 30 }]);
 
+  let newVariation = $state({ name: '', price: 0, duration_minutes: 30 });
+
   // --- Estado da Disponibilidade ---
   const weekDays = [
       { name: 'Domingo', number: 0 }, { name: 'Segunda-feira', number: 1 },
@@ -86,6 +88,7 @@
       serviceDescription = service.description;
       serviceTypeId = service.service_type.id;
       serviceVariations = service.variations.map(v => ({...v}));
+      newVariation = { name: '', price: 0, duration_minutes: 30 };
     } else {
       editingService = null;
       serviceTitle = '';
@@ -98,10 +101,6 @@
 
   async function handleSaveService(event: SubmitEvent) {
     event.preventDefault();
-    await saveService();
-  }
-
-  async function saveService() {
     try {
       const serviceData = {
         title: serviceTitle,
@@ -111,8 +110,6 @@
 
       if (editingService) {
         await api.updateService(editingService.id, serviceData);
-        // NOTA: A lógica de edição de variações individuais seria mais complexa.
-        // Para este projeto, a edição de variações pode ser feita apagando e recriando o serviço.
       } else {
         const newService = await api.createService(serviceData);
         if (newService && newService.id) {
@@ -121,8 +118,11 @@
             }
         }
       }
-      showServiceDialog = false;
+      if (!editingService) {
+          showServiceDialog = false;
+      }
       await loadInitialData();
+      alert('Serviço salvo com sucesso!');
     } catch (error) {
       console.error("Erro ao salvar serviço:", error);
       if (error instanceof Error) {
@@ -141,6 +141,55 @@
     }
   }
 
+  async function handleUpdateVariation(variationId: string, index: number) {
+      const variationData = serviceVariations[index];
+      try {
+          await api.updateServiceVariation(variationId, variationData);
+          alert('Variação atualizada com sucesso!');
+          await loadInitialData(); 
+      } catch (error) {
+          console.error('Erro ao atualizar variação:', error);
+          if (error instanceof Error) alert(`Erro: ${error.message}`);
+      }
+  }
+
+  async function handleDeleteVariation(variationId: string) {
+      if (!confirm('Tem certeza que deseja apagar esta variação?')) return;
+      try {
+          await api.deleteServiceVariation(variationId);
+          serviceVariations = serviceVariations.filter(v => v.id !== variationId);
+          alert('Variação apagada com sucesso!');
+          await loadInitialData();
+      } catch (error) {
+          console.error('Erro ao apagar variação:', error);
+          if (error instanceof Error) alert(`Erro: ${error.message}`);
+      }
+  }
+
+  async function handleCreateVariation() {
+      if (!editingService || !newVariation.name) {
+          alert("Por favor, preencha o nome da nova variação.");
+          return;
+      }
+      try {
+          const createdVariation = await api.createServiceVariation(editingService.id, newVariation);
+          alert('Nova variação adicionada!');
+          serviceVariations = [...serviceVariations, createdVariation];
+          newVariation = { name: '', price: 0, duration_minutes: 30 };
+          await loadInitialData();
+          
+          const updatedService = services.find(s => s.id === editingService?.id);
+          if(updatedService) {
+              setTimeout(() => openServiceDialog(updatedService), 50);
+          }
+
+      } catch (error) {
+          console.error('Erro ao criar variação:', error);
+          if (error instanceof Error) alert(`Erro: ${error.message}`);
+      }
+  }
+
+
   async function saveAvailability() {
     try {
         for (const dayUi of scheduleUi) {
@@ -154,8 +203,6 @@
             } else if (!dayUi.enabled && apiAvailability) {
                 await api.deleteProviderAvailability(apiAvailability.id);
             }
-            // NOTA: A lógica de ATUALIZAÇÃO de um horário existente não está implementada
-            // Para este projeto, o fluxo é apagar (desmarcando) e criar (marcando).
         }
         alert('Disponibilidade atualizada com sucesso!');
         await loadInitialData();
@@ -382,36 +429,15 @@
       <form onsubmit={handleSaveService} class="space-y-4">
         <div class="space-y-2">
           <label for="title" class="text-sm font-medium">Nome do Serviço</label>
-          <input
-            id="title"
-            type="text"
-            bind:value={serviceTitle}
-            required
-            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            placeholder="ex: Treinamento Pessoal"
-          />
+          <input id="title" type="text" bind:value={serviceTitle} required class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="ex: Treinamento Pessoal" />
         </div>
-
         <div class="space-y-2">
           <label for="description" class="text-sm font-medium">Descrição</label>
-          <textarea
-            id="description"
-            bind:value={serviceDescription}
-            required
-            rows="3"
-            class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            placeholder="Descreva seu serviço..."
-          ></textarea>
+          <textarea id="description" bind:value={serviceDescription} required rows="3" class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Descreva seu serviço..."></textarea>
         </div>
-
         <div class="space-y-2">
           <label for="type" class="text-sm font-medium">Tipo de Serviço</label>
-          <select
-            id="type"
-            bind:value={serviceTypeId}
-            required
-            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
+          <select id="type" bind:value={serviceTypeId} required class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
             <option value="" disabled>Selecione um tipo</option>
             {#each serviceTypes as type}
                 <option value={type.id}>{type.name}</option>
@@ -419,86 +445,95 @@
           </select>
         </div>
         
+        <div class="flex justify-end pt-2">
+             <button type="submit" class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+                {editingService ? 'Atualizar Detalhes' : 'Criar Serviço'}
+            </button>
+        </div>
+      </form>
+
+        {#if editingService}
+            <div class="border-t mt-6 pt-6 space-y-4">
+                <h4 class="text-lg font-medium">Gerenciar Variações</h4>
+                
+                {#each serviceVariations as variation, index}
+                    <div class="flex gap-2 items-end p-3 border rounded-lg">
+                        <div class="flex-1 space-y-2">
+                            <!-- CORREÇÃO: Adicionamos 'for' e 'id' para acessibilidade -->
+                            <label for={`edit-var-name-${index}`} class="text-xs">Nome</label>
+                            <input id={`edit-var-name-${index}`} type="text" bind:value={variation.name} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
+                        </div>
+                        <div class="w-24 space-y-2">
+                            <label for={`edit-var-price-${index}`} class="text-xs">Preço</label>
+                            <input id={`edit-var-price-${index}`} type="number" bind:value={variation.price} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
+                        </div>
+                        <div class="w-28 space-y-2">
+                            <label for={`edit-var-duration-${index}`} class="text-xs">Duração (min)</label>
+                            <input id={`edit-var-duration-${index}`} type="number" bind:value={variation.duration_minutes} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
+                        </div>
+                        <!-- CORREÇÃO: Adicionamos uma verificação para garantir que variation.id existe -->
+                        <button type="button" onclick={() => { if(variation.id) handleUpdateVariation(variation.id, index); }} class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-3 text-sm text-secondary-foreground transition-colors hover:bg-secondary/80">Salvar</button>
+                        <button type="button" onclick={() => { if(variation.id) handleDeleteVariation(variation.id); }} class="inline-flex h-9 w-9 items-center justify-center rounded-md bg-destructive text-sm text-destructive-foreground transition-colors hover:bg-destructive/80">×</button>
+                    </div>
+                {/each}
+
+                <div class="border-t pt-4 mt-4">
+                     <h5 class="text-md font-medium mb-2">Adicionar Nova Variação</h5>
+                     <div class="flex gap-2 items-end p-3 border rounded-lg bg-muted/20">
+                         <div class="flex-1 space-y-2">
+                            <label for="new-var-name" class="text-xs">Nome</label>
+                            <input id="new-var-name" type="text" bind:value={newVariation.name} placeholder="Ex: Pacote Premium" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
+                        </div>
+                        <div class="w-24 space-y-2">
+                            <label for="new-var-price" class="text-xs">Preço</label>
+                            <input id="new-var-price" type="number" bind:value={newVariation.price} class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
+                        </div>
+                        <div class="w-28 space-y-2">
+                            <label for="new-var-duration" class="text-xs">Duração (min)</label>
+                            <input id="new-var-duration" type="number" bind:value={newVariation.duration_minutes} class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
+                        </div>
+                        <button type="button" onclick={handleCreateVariation} class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-sm text-primary-foreground transition-colors hover:bg-primary/80">Adicionar</button>
+                     </div>
+                </div>
+            </div>
+        {/if}
+
         {#if !editingService}
-        <div class="space-y-3">
+        <div class="space-y-3 pt-4 border-t">
           <div class="flex justify-between items-center">
-            <span class="text-sm font-medium">Variações do Serviço (para novos serviços)</span>
-              <button
-                type="button"
-                onclick={addVariation}
-                class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm transition-colors hover:bg-accent"
-              >
+            <span class="text-sm font-medium">Variações do Serviço</span>
+              <button type="button" onclick={addVariation} class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm transition-colors hover:bg-accent">
                 + Adicionar Variação
               </button>
           </div>
-
           {#each serviceVariations as variation, index}
             <div class="flex gap-2 items-end">
               <div class="flex-1 space-y-2">
                 <label for={`var-name-${index}`} class="text-sm">Nome</label>
-                <input
-                  id={`var-name-${index}`}
-                  type="text"
-                  bind:value={variation.name}
-                  required
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-                  placeholder="ex: Básico, Premium"
-                />
+                <input id={`var-name-${index}`} type="text" bind:value={variation.name} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
               </div>
               <div class="w-28 space-y-2">
                 <label for={`var-price-${index}`} class="text-sm">Preço ($)</label>
-                <input
-                  id={`var-price-${index}`}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  bind:value={variation.price}
-                  required
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-                />
+                <input id={`var-price-${index}`} type="number" min="0" step="0.01" bind:value={variation.price} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
               </div>
               <div class="w-28 space-y-2">
                 <label for={`var-duration-${index}`} class="text-sm">Duração (min)</label>
-                <input
-                  id={`var-duration-${index}`}
-                  type="number"
-                  min="15"
-                  step="15"
-                  bind:value={variation.duration_minutes}
-                  required
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-                />
+                <input id={`var-duration-${index}`} type="number" min="15" step="15" bind:value={variation.duration_minutes} required class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" />
               </div>
               {#if serviceVariations.length > 1}
-                <button
-                  type="button"
-                  onclick={() => removeVariation(index)}
-                  class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm transition-colors hover:bg-accent"
-                >
-                  ×
-                </button>
+                <button type="button" onclick={() => removeVariation(index)} class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm transition-colors hover:bg-accent">×</button>
               {/if}
             </div>
           {/each}
         </div>
         {/if}
 
-        <div class="flex gap-2 pt-4">
-          <button
-            type="button"
-            onclick={() => showServiceDialog = false}
-            class="flex-1 inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            class="flex-1 inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            {editingService ? 'Atualizar' : 'Criar'} Serviço
+      <div class="flex gap-2 pt-6 border-t mt-6">
+          <button type="button" onclick={() => showServiceDialog = false} class="flex-1 inline-flex h-10 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent">
+            Fechar
           </button>
         </div>
-      </form>
     </div>
   </div>
 {/if}
+

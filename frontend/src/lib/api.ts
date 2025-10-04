@@ -215,8 +215,8 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
     
-  getProviderAvailabilityForDate: (providerId: string, date: string) => 
-    request<AvailabilitySlot[]>(`/providers/${providerId}/availability?date=${date}`),
+  getProviderAvailabilityForDate: (providerId: string, date: string, duration: number) => 
+    request<AvailabilitySlot[]>(`/providers/${providerId}/availability?date=${date}&duration=${duration}`),
 
   createBooking: (data: { service_variation_id: string; start_time: string }) =>
     request<Booking>('/bookings', {

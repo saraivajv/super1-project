@@ -39,10 +39,10 @@
     }
   }
 
-  async function loadAvailabilitySlots(providerId: string, date: Date) {
+  async function loadAvailabilitySlots(providerId: string, date: Date, duration: number) {
     try {
-        const dateString = date.toISOString().split('T')[0]; // Formato YYYY-MM-DD
-        const data = await api.getProviderAvailabilityForDate(providerId, dateString);
+        const dateString = date.toISOString().split('T')[0];
+        const data = await api.getProviderAvailabilityForDate(providerId, dateString, duration);
         availableSlots = data;
     } catch (error) {
         console.error("Erro ao carregar horários:", error);
@@ -56,12 +56,10 @@
       goto('/login');
       return;
     }
-
     if ($user.role !== 'client') {
       alert('Apenas clientes podem reservar serviços');
       return;
     }
-
     selectedVariation = variation;
     selectedDate = null;
     selectedTime = '';
@@ -71,12 +69,12 @@
 
   function handleDateChange(event: Event) {
     const input = event.target as HTMLInputElement;
-    if (input.value && service?.provider?.id) {
+    if (input.value && service?.provider?.id && selectedVariation) {
         const [year, month, day] = input.value.split('-').map(Number);
         const date = new Date(Date.UTC(year, month - 1, day));
         selectedDate = date;
         selectedTime = '';
-        loadAvailabilitySlots(service.provider.id, date);
+        loadAvailabilitySlots(service.provider.id, date, selectedVariation.duration_minutes);
     }
   }
 
@@ -128,7 +126,6 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <div class="min-h-screen flex flex-col">
-  <!-- Header -->
   <header class="border-b border-border sticky top-0 bg-background z-10">
     <div class="container mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/marketplace">
@@ -153,7 +150,6 @@
     </div>
   </header>
 
-  <!-- Main Content -->
   <main class="flex-1 container mx-auto px-4 py-8">
     {#if isLoading}
       <div class="text-center py-12">Carregando detalhes do serviço...</div>
@@ -170,7 +166,6 @@
       </a>
 
       <div class="grid gap-6 lg:grid-cols-3">
-        <!-- Service Info -->
         <div class="lg:col-span-2 space-y-6">
           <div class="rounded-lg border bg-card p-6">
             <span class="rounded-md bg-secondary px-2 py-1 text-xs">{service.service_type.name}</span>
@@ -184,7 +179,6 @@
           </div>
         </div>
 
-        <!-- Booking Options -->
         <div class="space-y-6">
           <div class="rounded-lg border bg-card p-6">
             <h3 class="text-xl font-bold mb-4">Opções de Serviço</h3>
@@ -211,11 +205,9 @@
   </main>
 </div>
 
-<!-- Booking Dialog -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 {#if showBookingDialog && selectedVariation}
   <!-- svelte-ignore a11y_interactive_supports_focus -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     role="dialog"
     aria-modal="true"
@@ -280,4 +272,12 @@
     </div>
   </div>
 {/if}
+
+<style>
+    input[type="date"]::-webkit-calendar-picker-indicator {
+        cursor: pointer;
+        position: relative;
+        color-scheme: dark;
+    }
+</style>
 
