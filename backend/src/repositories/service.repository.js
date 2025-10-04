@@ -25,6 +25,7 @@ export const findByProviderId = async (provider_id) => {
          GROUP BY s.id, st.name, st.id`,
         [provider_id]
     );
+    
     return result.rows.map(row => ({
         id: row.id,
         title: row.title,
@@ -34,12 +35,17 @@ export const findByProviderId = async (provider_id) => {
             id: row.service_type_id_val,
             name: row.service_type_name
         },
-        variations: row.variations[0].id === null ? [] : row.variations
+        variations: (row.variations && row.variations.length > 0 && row.variations[0].id !== null) ? row.variations : []
     }));
 };
 
 export const findByIdAndProviderId = async (id, provider_id) => {
     const result = await query('SELECT * FROM services WHERE id = $1 AND provider_id = $2', [id, provider_id]);
+    return result.rows[0];
+};
+
+export const findById = async (id) => {
+    const result = await query('SELECT * FROM services WHERE id = $1', [id]);
     return result.rows[0];
 };
 
@@ -85,7 +91,7 @@ export const removeVariation = async (variationId) => {
 };
 
 
-// --- NOVAS Funções Públicas (Marketplace) ---
+// --- Funções Públicas (Marketplace) ---
 
 export const findAllPublic = async (serviceTypeId) => {
     let queryString = `
@@ -111,7 +117,7 @@ export const findAllPublic = async (serviceTypeId) => {
     const result = await query(queryString, queryParams);
     return result.rows.map(row => ({
         ...row,
-        variations: row.variations || [] // Garante que variations seja sempre um array
+        variations: row.variations || []
     }));
 };
 
@@ -141,4 +147,5 @@ export const findAllTypes = async () => {
     const result = await query('SELECT id, name FROM service_types ORDER BY name');
     return result.rows;
 };
+    
 

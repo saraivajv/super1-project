@@ -2,152 +2,179 @@ import * as availabilityRepo from '../repositories/availability.repository.js';
 import * as providerRepo from '../repositories/provider.repository.js';
 import * as serviceRepo from '../repositories/service.repository.js';
 
-// Função auxiliar para obter o providerId a partir do userId
-const getProviderId = async (userId) => {
-    const provider = await providerRepo.findByUserId(userId);
-    if (!provider) throw new Error('Perfil de prestador não encontrado.');
-    return provider.id;
-};
-
-// --- CRUD de Serviços ---
-
-export const createService = async (req, res) => {
-    try {
-        const providerId = await getProviderId(req.user.id);
-        // TODO: Validar se o service_type_id existe
-        const newService = await serviceRepo.createService(providerId, req.body);
-        res.status(201).json(newService);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
+// --- Serviços ---
 
 export const getMyServices = async (req, res) => {
     try {
-        const providerId = await getProviderId(req.user.id);
-        const services = await serviceRepo.findServicesByProviderId(providerId);
+        const provider = await providerRepo.findByUserId(req.user.id);
+        if (!provider) {
+            return res.status(404).json({ message: "Perfil de prestador não encontrado." });
+        }
+        const services = await serviceRepo.findByProviderId(provider.id);
         res.status(200).json(services);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao buscar serviços.", error: error.message });
+    }
+};
+
+export const createService = async (req, res) => {
+    try {
+        const provider = await providerRepo.findByUserId(req.user.id);
+        if (!provider) {
+            return res.status(404).json({ message: "Perfil de prestador não encontrado." });
+        }
+
+        const serviceData = {
+            title: req.body.title,
+            description: req.body.description,
+            service_type_id: req.body.service_type_id,
+            provider_id: provider.id 
+        };
+        
+        // // Adicionamos um log para depuração, para ver exatamente o que está a ser enviado.
+        // console.log("Dados para criar o serviço:", serviceData);
+
+        const newService = await serviceRepo.create(serviceData);
+        res.status(201).json(newService);
+    } catch (error) {
+        console.error("Erro no controlador createService:", error);
+        res.status(500).json({ message: "Erro ao criar serviço.", error: error.message });
     }
 };
 
 export const updateService = async (req, res) => {
     try {
-        const providerId = await getProviderId(req.user.id);
-        const service = await serviceRepo.findServiceById(req.params.id);
-        if (!service || service.provider_id !== providerId) {
-            return res.status(404).json({ message: 'Serviço não encontrado ou não pertence a este prestador.' });
+        const provider = await providerRepo.findByUserId(req.user.id);
+        const service = await serviceRepo.findByIdAndProviderId(req.params.id, provider.id);
+        if (!service) {
+            return res.status(404).json({ message: "Serviço não encontrado ou não pertence a você." });
         }
-        const updatedService = await serviceRepo.updateServiceById(req.params.id, req.body);
+        const updatedService = await serviceRepo.update(req.params.id, req.body);
         res.status(200).json(updatedService);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao atualizar serviço.", error: error.message });
     }
 };
 
 export const deleteService = async (req, res) => {
     try {
-        const providerId = await getProviderId(req.user.id);
-        const service = await serviceRepo.findServiceById(req.params.id);
-        if (!service || service.provider_id !== providerId) {
-            return res.status(404).json({ message: 'Serviço não encontrado ou não pertence a este prestador.' });
+        const provider = await providerRepo.findByUserId(req.user.id);
+        const service = await serviceRepo.findByIdAndProviderId(req.params.id, provider.id);
+        if (!service) {
+            return res.status(404).json({ message: "Serviço não encontrado ou não pertence a você." });
         }
-        await serviceRepo.deleteServiceById(req.params.id);
-        res.status(204).send(); // 204 No Content
+        await serviceRepo.remove(req.params.id);
+        res.status(204).send();
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao apagar serviço.", error: error.message });
     }
 };
 
-// --- CRUD de Variações de Serviço ---
+// --- Variações de Serviço ---
 
-export const createVariation = async (req, res) => {
+export const createServiceVariation = async (req, res) => {
     try {
         const { serviceId } = req.params;
-        const providerId = await getProviderId(req.user.id);
-        const service = await serviceRepo.findServiceById(serviceId);
-        if (!service || service.provider_id !== providerId) {
-            return res.status(404).json({ message: 'Serviço não encontrado ou não pertence a este prestador.' });
+        const provider = await providerRepo.findByUserId(req.user.id);
+        const service = await serviceRepo.findByIdAndProviderId(serviceId, provider.id);
+        if (!service) {
+            return res.status(404).json({ message: "Serviço não encontrado ou não pertence a você." });
         }
         const newVariation = await serviceRepo.createVariation(serviceId, req.body);
         res.status(201).json(newVariation);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao criar variação de serviço.", error: error.message });
     }
 };
 
-export const updateVariation = async (req, res) => {
+export const updateServiceVariation = async (req, res) => {
     try {
         const { variationId } = req.params;
-        const providerId = await getProviderId(req.user.id);
+        const provider = await providerRepo.findByUserId(req.user.id);
+        if (!provider) {
+            return res.status(404).json({ message: "Perfil de prestador não encontrado." });
+        }
+
         const variation = await serviceRepo.findVariationById(variationId);
         if (!variation) {
-            return res.status(404).json({ message: 'Variação não encontrada.' });
+            return res.status(404).json({ message: "Variação não encontrada." });
         }
-        const service = await serviceRepo.findServiceById(variation.service_id);
-        if (!service || service.provider_id !== providerId) {
-            return res.status(403).json({ message: 'Acesso negado a esta variação.' });
+
+        // Verifica se a variação pertence a um serviço do prestador logado
+        const service = await serviceRepo.findByIdAndProviderId(variation.service_id, provider.id);
+        if (!service) {
+            return res.status(403).json({ message: "Você não tem permissão para editar esta variação." });
         }
-        const updatedVariation = await serviceRepo.updateVariationById(variationId, req.body);
+
+        const updatedVariation = await serviceRepo.updateVariation(variationId, req.body);
         res.status(200).json(updatedVariation);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao atualizar variação.", error: error.message });
     }
 };
 
-export const deleteVariation = async (req, res) => {
+export const deleteServiceVariation = async (req, res) => {
     try {
         const { variationId } = req.params;
-        const providerId = await getProviderId(req.user.id);
+        const provider = await providerRepo.findByUserId(req.user.id);
+        if (!provider) {
+            return res.status(404).json({ message: "Perfil de prestador não encontrado." });
+        }
+
         const variation = await serviceRepo.findVariationById(variationId);
-         if (!variation) {
-            return res.status(404).json({ message: 'Variação não encontrada.' });
+        if (!variation) {
+            return res.status(404).json({ message: "Variação não encontrada." });
         }
-        const service = await serviceRepo.findServiceById(variation.service_id);
-        if (!service || service.provider_id !== providerId) {
-            return res.status(403).json({ message: 'Acesso negado a esta variação.' });
+
+        // Verifica se a variação pertence a um serviço do prestador logado
+        const service = await serviceRepo.findByIdAndProviderId(variation.service_id, provider.id);
+        if (!service) {
+            return res.status(403).json({ message: "Você não tem permissão para apagar esta variação." });
         }
-        await serviceRepo.deleteVariationById(variationId);
+        
+        await serviceRepo.removeVariation(variationId);
         res.status(204).send();
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao apagar variação.", error: error.message });
     }
 };
 
-// --- CRUD de Disponibilidade ---
-
-export const createAvailability = async (req, res) => {
-    try {
-        const providerId = await getProviderId(req.user.id);
-        const newAvailability = await availabilityRepo.createAvailability(providerId, req.body);
-        res.status(201).json(newAvailability);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
+// --- Disponibilidade ---
 
 export const getMyAvailabilities = async (req, res) => {
     try {
-        const providerId = await getProviderId(req.user.id);
-        const availabilities = await availabilityRepo.findAvailabilitiesByProviderId(providerId);
+        const provider = await providerRepo.findByUserId(req.user.id);
+        if (!provider) {
+            return res.status(404).json({ message: "Perfil de prestador não encontrado." });
+        }
+        const availabilities = await availabilityRepo.findByProviderId(provider.id);
         res.status(200).json(availabilities);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao buscar disponibilidades.", error: error.message });
+    }
+};
+
+export const createAvailability = async (req, res) => {
+    try {
+        const provider = await providerRepo.findByUserId(req.user.id);
+        const newAvailability = await availabilityRepo.create({ ...req.body, provider_id: provider.id });
+        res.status(201).json(newAvailability);
+    } catch (error) {
+        res.status(500).json({ message: "Erro ao criar disponibilidade.", error: error.message });
     }
 };
 
 export const deleteAvailability = async (req, res) => {
     try {
-        const providerId = await getProviderId(req.user.id);
-        const availability = await availabilityRepo.findAvailabilityById(req.params.id);
-        if (!availability || availability.provider_id !== providerId) {
-            return res.status(404).json({ message: 'Disponibilidade não encontrada ou não pertence a este prestador.' });
+        const provider = await providerRepo.findByUserId(req.user.id);
+        const availability = await availabilityRepo.findByIdAndProviderId(req.params.id, provider.id);
+        if (!availability) {
+            return res.status(404).json({ message: "Disponibilidade não encontrada ou não pertence a você." });
         }
-        await availabilityRepo.deleteAvailabilityById(req.params.id);
+        await availabilityRepo.remove(req.params.id);
         res.status(204).send();
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: "Erro ao apagar disponibilidade.", error: error.message });
     }
 };
 

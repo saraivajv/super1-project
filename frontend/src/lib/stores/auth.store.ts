@@ -29,11 +29,14 @@ export const authStore = {
 
   login(user: User, token: string) {
     userStore.set(user)
-    tokenStore.set(token)
+
+    const tokenValue = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
+    
+    tokenStore.set(tokenValue);
 
     if (typeof window !== "undefined") {
       localStorage.setItem("user", JSON.stringify(user))
-      localStorage.setItem("token", token)
+      localStorage.setItem("token", tokenValue)
     }
   },
 
@@ -61,3 +64,5 @@ export const authStore = {
     return user?.role === "client"
   },
 }
+    
+

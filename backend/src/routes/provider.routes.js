@@ -20,9 +20,9 @@ router.route('/services/:id')
     .delete(providerController.deleteService);
 
 // --- Rotas de Variações de Serviço ---
-router.post('/services/:serviceId/variations', providerController.createVariation);
-router.put('/variations/:variationId', providerController.updateVariation);
-router.delete('/variations/:variationId', providerController.deleteVariation);
+router.post('/services/:serviceId/variations', providerController.createServiceVariation);
+router.put('/variations/:variationId', providerController.updateServiceVariation);
+router.delete('/variations/:variationId', providerController.deleteServiceVariation);
 
 
 // --- Rotas de Disponibilidade ---
