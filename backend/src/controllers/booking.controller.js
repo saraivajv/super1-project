@@ -72,9 +72,10 @@ export const getProviderBookings = async (req, res) => {
     }
 };
 
-export const cancelBooking = async (req, res) => {
+export const updateBookingStatus = async (req, res) => {
     try {
         const bookingId = req.params.id;
+        const { status } = req.body;
         const user = req.user;
 
         const booking = await bookingRepository.findById(bookingId);
@@ -85,13 +86,13 @@ export const cancelBooking = async (req, res) => {
         const provider = await providerRepository.findByUserId(user.id);
 
         if (booking.client_id !== user.id && (!provider || booking.provider_id !== provider.id)) {
-            return res.status(403).json({ message: "Você não tem permissão para cancelar esta reserva." });
+            return res.status(403).json({ message: "Você não tem permissão para alterar esta reserva." });
         }
-
-        const updatedBooking = await bookingRepository.updateStatus(bookingId, 'cancelled');
+        
+        const updatedBooking = await bookingRepository.updateStatus(bookingId, status);
         res.status(200).json(updatedBooking);
 
     } catch (error) {
-        res.status(500).json({ message: "Erro ao cancelar a reserva.", error: error.message });
+        res.status(500).json({ message: "Erro ao atualizar o status da reserva.", error: error.message });
     }
 };

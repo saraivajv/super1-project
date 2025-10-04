@@ -10,24 +10,21 @@ export const findByProviderAndDate = async (providerId, date) => {
 };
 
 export const checkOverlap = async (providerId, startTime, endTime, client) => {
-    const dbClient = client || query;
-    const result = await dbClient(
-        `SELECT id FROM bookings 
-         WHERE provider_id = $1 AND status != 'cancelled' AND 
-         (start_time, end_time) OVERLAPS ($2, $3)`,
-        [providerId, startTime, endTime]
-    );
+    const sql = `SELECT id FROM bookings WHERE provider_id = $1 AND status != 'cancelled' AND (start_time, end_time) OVERLAPS ($2, $3)`;
+    const params = [providerId, startTime, endTime];
+
+    const result = client ? await client.query(sql, params) : await query(sql, params);
+    
     return result.rows.length > 0;
 };
 
 export const create = async (bookingData, client) => {
     const { client_id, provider_id, service_variation_id, date, start_time, end_time, status } = bookingData;
-    const dbClient = client || query;
-    const result = await dbClient(
-        `INSERT INTO bookings (client_id, provider_id, service_variation_id, date, start_time, end_time, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [client_id, provider_id, service_variation_id, date, start_time, end_time, status]
-    );
+    const sql = `INSERT INTO bookings (client_id, provider_id, service_variation_id, date, start_time, end_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`;
+    const params = [client_id, provider_id, service_variation_id, date, start_time, end_time, status];
+
+    const result = client ? await client.query(sql, params) : await query(sql, params);
+
     return result.rows[0];
 };
 
@@ -42,7 +39,8 @@ const bookingDetailsQuery = `
                 'provider', json_build_object('name', up.name)
             )
         ) as service_variation,
-        json_build_object('name', uc.name, 'email', uc.email) as client
+        json_build_object('name', uc.name, 'email', uc.email) as client,
+        json_build_object('name', up.name) as provider
     FROM bookings b
     JOIN service_variations sv ON b.service_variation_id = sv.id
     JOIN services s ON sv.service_id = s.id

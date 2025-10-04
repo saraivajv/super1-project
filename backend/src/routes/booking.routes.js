@@ -9,6 +9,6 @@ router.post('/bookings', authMiddleware, roleMiddleware('client'), bookingContro
 
 router.get('/client/bookings', authMiddleware, roleMiddleware('client'), bookingController.getClientBookings);
 router.get('/provider/bookings', authMiddleware, roleMiddleware('provider'), bookingController.getProviderBookings);
-router.put('/bookings/:id/cancel', authMiddleware, bookingController.cancelBooking);
+router.put('/bookings/:id/status', authMiddleware, bookingController.updateBookingStatus);
 
 export default router;

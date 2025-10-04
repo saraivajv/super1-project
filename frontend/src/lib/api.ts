@@ -210,7 +210,7 @@ export const api = {
   getProviderBookings: () => request<Booking[]>("/provider/bookings"),
   getClientBookings: () => request<Booking[]>("/client/bookings"),
   updateBookingStatus: (id: string, status: string) =>
-    request(`/bookings/${id}/cancel`, {
+    request(`/bookings/${id}/status`, {
       method: "PUT",
       body: JSON.stringify({ status }),
     }),

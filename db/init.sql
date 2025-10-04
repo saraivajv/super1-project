@@ -1,4 +1,3 @@
--- Adiciona a extensão para gerar UUIDs se não existir
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Enum para os papéis de usuário (role)
@@ -45,17 +44,17 @@ CREATE TABLE services (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,
-    FOREIGN KEY (service_type_id) REFERENCES service_types(id) ON DELETE RESTRICT -- Impede deletar um tipo se estiver em uso
+    FOREIGN KEY (service_type_id) REFERENCES service_types(id) ON DELETE RESTRICT
 );
 
--- Variações de um mesmo serviço (ex: "Corte Simples", "Corte e Barba")
+-- Variações de um mesmo serviço
 CREATE TABLE service_variations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     service_id UUID NOT NULL,
     name VARCHAR(100) NOT NULL,
     description TEXT,
     price NUMERIC(10, 2) NOT NULL,
-    duration_minutes INTEGER NOT NULL, -- Duração em minutos
+    duration_minutes INTEGER NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -77,29 +76,30 @@ CREATE TABLE service_photos (
 CREATE TABLE provider_availabilities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     provider_id UUID NOT NULL,
-    day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Domingo, 6=Sábado
+    day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(provider_id, day_of_week, start_time, end_time),
+    UNIQUE(provider_id, day_of_week),
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
 );
 
 -- Tabela de Agendamentos (Bookings)
 CREATE TABLE bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL,
+    client_id UUID NOT NULL,
     provider_id UUID NOT NULL,
     service_variation_id UUID NOT NULL,
-    booking_start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    booking_end_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed')),
+    date DATE NOT NULL,
+    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed', 'pending')),
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,
-    FOREIGN KEY (service_variation_id) REFERENCES service_variations(id) ON DELETE CASCADE
+    FOREIGN KEY (service_variation_id) REFERENCES service_variations(id) ON DELETE RESTRICT
 );
 
 -- Tabela de Avaliações (Reviews)
@@ -118,4 +118,3 @@ INSERT INTO service_types (id, name, description) VALUES
 ('a1b2c3d4-e5f6-7890-1234-567890abcdef', 'Hidráulica', 'Reparos em encanamentos, vazamentos e instalações hidráulicas.'),
 ('98765432-10fe-dcba-9876-543210fedcba', 'Limpeza', 'Serviços de limpeza residencial e comercial.'),
 ('abcdef12-3456-7890-abcd-ef1234567890', 'Jardinagem', 'Manutenção de jardins, poda de árvores e paisagismo.');
-

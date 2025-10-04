@@ -537,3 +537,10 @@
   </div>
 {/if}
 
+<style>
+    input[type="time"]{
+        cursor: pointer;
+        position: relative;
+        color-scheme: dark;
+    }
+</style>
