@@ -1,3 +1,4 @@
+-- Adiciona a extensão para gerar UUIDs se não existir
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Enum para os papéis de usuário (role)
@@ -106,10 +107,12 @@ CREATE TABLE bookings (
 CREATE TABLE reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     booking_id UUID NOT NULL UNIQUE,
+    user_id UUID NOT NULL,
     rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
     comment TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- DADOS INICIAIS (SEED DATA)

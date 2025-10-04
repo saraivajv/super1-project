@@ -128,17 +128,24 @@ export const findByIdPublic = async (id) => {
             json_build_object('id', p.id, 'name', u.name, 'email', u.email) as provider,
             json_build_object('id', st.id, 'name', st.name) as service_type,
             (SELECT json_agg(json_build_object('id', sv.id, 'name', sv.name, 'price', sv.price, 'duration_minutes', sv.duration_minutes)) 
-             FROM service_variations sv WHERE sv.service_id = s.id) as variations
+             FROM service_variations sv WHERE sv.service_id = s.id) as variations,
+            COALESCE(AVG(r.rating), 0) as average_rating,
+            COUNT(r.id) as review_count
         FROM services s
         JOIN providers p ON s.provider_id = p.id
         JOIN users u ON p.user_id = u.id
         JOIN service_types st ON s.service_type_id = st.id
+        LEFT JOIN service_variations sv_reviews ON s.id = sv_reviews.service_id
+        LEFT JOIN bookings b ON sv_reviews.id = b.service_variation_id
+        LEFT JOIN reviews r ON b.id = r.booking_id
         WHERE s.id = $1 AND s.is_active = TRUE
         GROUP BY s.id, p.id, u.name, u.email, st.id, st.name
     `, [id]);
     const service = result.rows[0];
     if (service) {
         service.variations = service.variations || [];
+        service.average_rating = parseFloat(service.average_rating);
+        service.review_count = parseInt(service.review_count, 10);
     }
     return service;
 };
@@ -147,5 +154,3 @@ export const findAllTypes = async () => {
     const result = await query('SELECT id, name FROM service_types ORDER BY name');
     return result.rows;
 };
-    
-
