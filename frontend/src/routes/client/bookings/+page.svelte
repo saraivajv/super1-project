@@ -1,13 +1,19 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { api, type Booking } from '$lib/api';
-  import { authStore } from '$lib/stores/auth.store';
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { authStore } from '$lib/stores/auth.store';
+  import { api, type Booking } from '$lib/api';
 
   // --- Estado ---
   let bookings = $state<Booking[]>([]);
   let isLoading = $state(true);
   let activeTab = $state('upcoming');
+
+  let showReviewModal = $state(false);
+  let selectedBookingForReview = $state<Booking | null>(null);
+  let rating = $state(0);
+  let comment = $state('');
+  let isSubmittingReview = $state(false);
 
   onMount(() => {
     loadBookings();
@@ -36,6 +42,34 @@
         alert(`Erro ao cancelar: ${error.message}`);
       }
     }
+  }
+  
+  function openReviewModal(booking: Booking) {
+      selectedBookingForReview = booking;
+      rating = 0;
+      comment = '';
+      showReviewModal = true;
+  }
+
+  async function handleReviewSubmit() {
+      if (!selectedBookingForReview || rating === 0) {
+          alert('Por favor, selecione uma classificação de 1 a 5 estrelas.');
+          return;
+      }
+      isSubmittingReview = true;
+      try {
+          await api.createReview(selectedBookingForReview.id, { rating, comment });
+          alert('Avaliação enviada com sucesso!');
+          showReviewModal = false;
+          await loadBookings(); 
+      } catch (error) {
+          console.error('Erro ao enviar avaliação:', error);
+          if (error instanceof Error) {
+              alert(`Erro ao avaliar: ${error.message}`);
+          }
+      } finally {
+          isSubmittingReview = false;
+      }
   }
 
   // --- Funções Auxiliares ---
@@ -76,11 +110,11 @@
 
   function getStatusColor(status: Booking['status']) {
     switch (status) {
-      case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      case 'completed': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'confirmed': return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300';
+      case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300';
+      case 'completed': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
   }
 
@@ -103,7 +137,6 @@
 </script>
 
 <div class="min-h-screen flex flex-col">
-  <!-- Header -->
   <header class="border-b border-border">
     <div class="container mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/marketplace">
@@ -120,14 +153,12 @@
     </div>
   </header>
 
-  <!-- Main Content -->
   <main class="flex-1 container mx-auto px-4 py-8">
     <div class="mb-8">
       <h2 class="text-3xl font-bold mb-2">Minhas Reservas</h2>
       <p class="text-muted-foreground">Gerencie suas reservas de serviços</p>
     </div>
 
-    <!-- Tabs -->
     <div class="mb-6">
       <div class="flex gap-2 border-b border-border">
         <button
@@ -163,19 +194,12 @@
       </div>
     </div>
 
-    <!-- Bookings List -->
     {#if isLoading}
       <div class="text-center py-12">Carregando reservas...</div>
     {:else if filteredBookings.length === 0}
       <div class="rounded-lg border bg-card p-12 text-center">
         <p class="text-muted-foreground mb-4">
-          {#if activeTab === 'upcoming'}
-            Você não tem reservas próximas
-          {:else if activeTab === 'past'}
-            Você não tem reservas passadas ou concluídas
-          {:else}
-            Você não tem reservas canceladas
-          {/if}
+          Nenhum resultado para esta aba.
         </p>
         <a
           href="/marketplace"
@@ -219,7 +243,13 @@
                   </div>
                 </div>
 
-                {#if activeTab === 'upcoming' && booking.status !== 'cancelled'}
+                {#if booking.status === 'completed'}
+                    <div class="flex flex-col gap-2">
+                        <button onclick={() => openReviewModal(booking)} class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80">
+                            Avaliar Serviço
+                        </button>
+                    </div>
+                {:else if activeTab === 'upcoming' && booking.status !== 'cancelled'}
                   <div class="flex flex-col gap-2">
                     <button
                       onclick={() => cancelBooking(booking.id)}
@@ -237,4 +267,57 @@
     {/if}
   </main>
 </div>
+
+{#if showReviewModal && selectedBookingForReview}
+  <!-- svelte-ignore a11y_interactive_supports_focus -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    role="dialog"
+    aria-modal="true"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    onclick={() => showReviewModal = false}
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="w-full max-w-lg rounded-lg border bg-card p-6" onclick={(event) => event.stopPropagation()}>
+      <h3 class="text-2xl font-bold mb-2">Avaliar Serviço</h3>
+      <p class="text-sm text-muted-foreground mb-6">
+        {selectedBookingForReview.service_variation.service.title} com {selectedBookingForReview.service_variation.service.provider.name}
+      </p>
+
+      <div class="space-y-6">
+        <div class="space-y-2">
+          <!-- svelte-ignore a11y_label_has_associated_control -->
+          <label class="text-sm font-medium">Sua classificação</label>
+          <div class="flex items-center gap-1">
+            {#each { length: 5 } as _, i}
+              <!-- svelte-ignore a11y_consider_explicit_label -->
+              <button onclick={() => rating = i + 1} class="p-1">
+                <svg class:text-yellow-400={i < rating} class:text-gray-600={i >= rating} width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="m12 17.27l-5.18 2.73l1-5.77l-4.2-4.09l5.81-.84L12 4.63l2.57 5.67l5.81.84l-4.2 4.09l1 5.77z"/></svg>
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label for="comment" class="text-sm font-medium">Seu comentário (opcional)</label>
+          <textarea
+            id="comment"
+            bind:value={comment}
+            rows="4"
+            class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            placeholder="Descreva a sua experiência..."
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-6">
+        <button onclick={() => showReviewModal = false} class="flex-1 inline-flex h-10 items-center justify-center rounded-md border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent">
+          Cancelar
+        </button>
+        <button onclick={handleReviewSubmit} disabled={isSubmittingReview || rating === 0} class="flex-1 inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">
+          {isSubmittingReview ? 'A enviar...' : 'Enviar Avaliação'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 

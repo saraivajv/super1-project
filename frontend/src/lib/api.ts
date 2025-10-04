@@ -44,6 +44,8 @@ export interface Service {
     provider: { id: string; name: string; email?: string };
     service_type: ServiceType;
     variations: Variation[];
+    average_rating: number;
+    review_count: number;
 }
 
 export interface Booking {
@@ -80,6 +82,12 @@ export interface AvailabilitySlot {
     available: boolean;
 }
 
+export interface Review {
+    rating: number;
+    comment: string;
+    created_at: string;
+    user_name: string;
+}
 
 // --- LÓGICA DE REQUISIÇÃO ---
 interface RequestOptions extends RequestInit {
@@ -134,6 +142,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
 // --- FUNÇÕES DA API EXPORTADAS ---
 export const api = {
+  // Auth
   login: (email: string, password: string) =>
     request<AuthResponse>("/auth/login", {
       method: "POST",
@@ -158,70 +167,52 @@ export const api = {
 
   // --- ROTAS DO PRESTADOR ---
   getProviderServices: () => request<Service[]>('/provider/services'),
-  
+
   createService: (data: { title: string, description: string, service_type_id: string }) =>
-    request<Service>("/provider/services", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    request<Service>("/provider/services", { method: "POST", body: JSON.stringify(data) }),
 
   updateService: (id: string, data: { title: string, description: string, service_type_id: string }) =>
-    request<Service>(`/provider/services/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
+    request<Service>(`/provider/services/${id}`, { method: "PUT", body: JSON.stringify(data) }),
 
-  deleteService: (id: string) =>
-    request(`/provider/services/${id}`, {
-      method: "DELETE",
-    }),
+  deleteService: (id: string) => request(`/provider/services/${id}`, { method: "DELETE" }),
 
   createServiceVariation: (serviceId: string, data: { name: string, price: number, duration_minutes: number }) =>
-    request<Variation>(`/provider/services/${serviceId}/variations`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-    }),
-    
-  updateServiceVariation: (variationId: string, data: { name: string, price: number, duration_minutes: number }) =>
-    request<Variation>(`/provider/variations/${variationId}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-    }),
+    request<Variation>(`/provider/services/${serviceId}/variations`, { method: 'POST', body: JSON.stringify(data) }),
 
-  deleteServiceVariation: (variationId: string) =>
-    request(`/provider/variations/${variationId}`, {
-        method: 'DELETE',
-    }),
+  updateServiceVariation: (variationId: string, data: { name: string, price: number, duration_minutes: number }) =>
+    request<Variation>(`/provider/variations/${variationId}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  deleteServiceVariation: (variationId: string) => request(`/provider/variations/${variationId}`, { method: 'DELETE' }),
 
   getProviderAvailabilities: () => request<Availability[]>('/provider/availabilities'),
-  
+
   createProviderAvailability: (data: { day_of_week: number, start_time: string, end_time: string }) =>
-    request<Availability>("/provider/availabilities", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    request<Availability>("/provider/availabilities", { method: "POST", body: JSON.stringify(data) }),
+  
+  deleteProviderAvailability: (id: string) => request(`/provider/availabilities/${id}`, { method: 'DELETE' }),
 
-  deleteProviderAvailability: (id: string) =>
-    request(`/provider/availabilities/${id}`, {
-        method: 'DELETE'
-    }),
-
-  // --- ROTAS DE RESERVA (BOOKING) ---
+  // --- ROTAS DE RESERVA (BOOKING) E AVALIAÇÃO (REVIEW) ---
   getProviderBookings: () => request<Booking[]>("/provider/bookings"),
   getClientBookings: () => request<Booking[]>("/client/bookings"),
+
   updateBookingStatus: (id: string, status: string) =>
-    request(`/bookings/${id}/status`, {
-      method: "PUT",
-      body: JSON.stringify({ status }),
-    }),
-    
+    request(`/bookings/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
+
   getProviderAvailabilityForDate: (providerId: string, date: string, duration: number) => 
     request<AvailabilitySlot[]>(`/providers/${providerId}/availability?date=${date}&duration=${duration}`),
 
   createBooking: (data: { service_variation_id: string; start_time: string }) =>
-    request<Booking>('/bookings', {
+    request<Booking>('/bookings', { method: 'POST', body: JSON.stringify(data), requiresAuth: true }),
+    
+  // Funções para criar e buscar avaliações
+  createReview: (bookingId: string, data: { rating: number; comment: string }) =>
+    request(`/bookings/${bookingId}/review`, {
         method: 'POST',
         body: JSON.stringify(data),
         requiresAuth: true,
     }),
+
+  getServiceReviews: (serviceId: string) =>
+    request<Review[]>(`/services/${serviceId}/reviews`, { requiresAuth: false }),
 }
+

@@ -1,13 +1,14 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
-  import { api, type AvailabilitySlot, type Service, type Variation } from '$lib/api';
-  import { authStore } from '$lib/stores/auth.store';
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { authStore } from '$lib/stores/auth.store';
+  import { api, type Service, type Variation, type AvailabilitySlot, type Review } from '$lib/api';
   import { get } from 'svelte/store';
 
   // --- Estado ---
   let service = $state<Service | null>(null);
+  let reviews = $state<Review[]>([]);
   let isLoading = $state(true);
   
   // --- Estado do Modal de Reserva ---
@@ -23,17 +24,21 @@
   onMount(() => {
     const id = get(page).params.id;
     if (id) {
-        loadService(id);
+        loadPageData(id);
     }
   });
 
-  async function loadService(id: string) {
+  async function loadPageData(id: string) {
     isLoading = true;
     try {
-      const data = await api.getService(id);
-      service = data;
+      const [serviceData, reviewsData] = await Promise.all([
+          api.getService(id),
+          api.getServiceReviews(id)
+      ]);
+      service = serviceData;
+      reviews = reviewsData;
     } catch (error) {
-      console.error("Erro ao carregar serviço:", error);
+      console.error("Erro ao carregar dados da página do serviço:", error);
     } finally {
       isLoading = false;
     }
@@ -121,6 +126,10 @@
   function stopPropagation(event: MouseEvent) {
     event.stopPropagation();
   }
+  
+  function formatReviewDate(dateStr: string) {
+      return new Date(dateStr).toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
@@ -171,11 +180,46 @@
             <span class="rounded-md bg-secondary px-2 py-1 text-xs">{service.service_type.name}</span>
             <h2 class="text-3xl font-bold mt-2 mb-2">{service.title}</h2>
             <p class="text-base text-muted-foreground">{service.description}</p>
+            
+            <div class="flex items-center gap-2 mt-4 pt-4 border-t">
+                <div class="flex items-center">
+                    {#each { length: 5 } as _, i}
+                        <svg class:text-yellow-400={i < Math.round(service.average_rating)} class:text-gray-600={i >= Math.round(service.average_rating)} width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="m12 17.27l-5.18 2.73l1-5.77l-4.2-4.09l5.81-.84L12 4.63l2.57 5.67l5.81.84l-4.2 4.09l1 5.77z"/></svg>
+                    {/each}
+                </div>
+                <span class="text-sm text-muted-foreground">({service.review_count} {service.review_count === 1 ? 'avaliação' : 'avaliações'})</span>
+            </div>
           </div>
+          
           <div class="rounded-lg border bg-card p-6">
             <h3 class="text-xl font-bold mb-4">Sobre o Prestador</h3>
             <p class="font-medium">{service.provider?.name || 'Prestador'}</p>
             <p class="text-sm text-muted-foreground">{service.provider?.email || ''}</p>
+          </div>
+
+          <!-- NOVA SECÇÃO: Lista de Avaliações -->
+          <div class="rounded-lg border bg-card p-6">
+            <h3 class="text-xl font-bold mb-4">O que os clientes dizem</h3>
+            {#if reviews.length > 0}
+                <div class="space-y-6">
+                    {#each reviews as review}
+                        <div class="border-t pt-4 first:pt-0 first:border-t-0">
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold">{review.user_name}</span>
+                                <div class="flex items-center">
+                                    {#each { length: 5 } as _, i}
+                                        <svg class:text-yellow-400={i < review.rating} class:text-gray-600={i >= review.rating} width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12 17.27l-5.18 2.73l1-5.77l-4.2-4.09l5.81-.84L12 4.63l2.57 5.67l5.81.84l-4.2 4.09l1 5.77z"/></svg>
+                                    {/each}
+                                </div>
+                            </div>
+                             <p class="text-xs text-muted-foreground">{formatReviewDate(review.created_at)}</p>
+                            <p class="text-sm text-muted-foreground mt-2">{review.comment}</p>
+                        </div>
+                    {/each}
+                </div>
+            {:else}
+                <p class="text-sm text-muted-foreground">Este serviço ainda não tem avaliações.</p>
+            {/if}
           </div>
         </div>
 
@@ -205,16 +249,17 @@
   </main>
 </div>
 
-<!-- svelte-ignore a11y_interactive_supports_focus -->
 {#if showBookingDialog && selectedVariation}
+  <!-- svelte-ignore a11y_interactive_supports_focus -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     role="dialog"
     aria-modal="true"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
     onclick={() => showBookingDialog = false}
   >
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="w-full max-w-lg rounded-lg border bg-card p-6" onclick={stopPropagation}>
       <h3 class="text-2xl font-bold mb-2">Reservar {service?.title}</h3>
       <p class="text-sm text-muted-foreground mb-6">
@@ -274,8 +319,11 @@
 
 <style>
     input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: invert(1);
         cursor: pointer;
-        position: relative;
+    }
+    
+    input[type="date"] {
         color-scheme: dark;
     }
 </style>
