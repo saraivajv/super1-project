@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { api, type AvailabilitySlot, type Review, type Service, type Variation } from '$lib/api';
   import { authStore } from '$lib/stores/auth.store';
-  import { api, type Service, type Variation, type AvailabilitySlot, type Review } from '$lib/api';
+  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
 
   // --- Estado ---
@@ -319,11 +319,8 @@
 
 <style>
     input[type="date"]::-webkit-calendar-picker-indicator {
-        filter: invert(1);
         cursor: pointer;
-    }
-    
-    input[type="date"] {
+        position: relative;
         color-scheme: dark;
     }
 </style>
