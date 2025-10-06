@@ -22,6 +22,10 @@ CREATE TABLE providers (
     bio TEXT,
     phone_number VARCHAR(20),
     is_active BOOLEAN DEFAULT TRUE,
+    city VARCHAR(100),
+    neighborhood VARCHAR(100),
+    latitude DECIMAL(9, 6),
+    longitude DECIMAL(9, 6),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

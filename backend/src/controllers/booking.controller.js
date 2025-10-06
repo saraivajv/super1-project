@@ -1,4 +1,5 @@
 import pool from '../db.js';
+import redisClient from '../redis.js'; // Importa o cliente Redis
 import * as bookingRepository from '../repositories/booking.repository.js';
 import * as providerRepository from '../repositories/provider.repository.js';
 import * as serviceRepository from '../repositories/service.repository.js';
@@ -40,6 +41,14 @@ export const createBooking = async (req, res) => {
         }, client);
 
         await client.query('COMMIT');
+
+        const cacheKeyPattern = `availability:${providerId}:${newBooking.date}:*`;
+        const keys = await redisClient.keys(cacheKeyPattern);
+        if (keys.length > 0) {
+            console.log("INVALIDANDO CACHE:", keys);
+            await redisClient.del(keys);
+        }
+
         res.status(201).json(newBooking);
 
     } catch (error) {
@@ -75,7 +84,7 @@ export const getProviderBookings = async (req, res) => {
 export const updateBookingStatus = async (req, res) => {
     try {
         const bookingId = req.params.id;
-        const { status } = req.body;
+        const { status } = req.body; 
         const user = req.user;
 
         const booking = await bookingRepository.findById(bookingId);
@@ -90,9 +99,19 @@ export const updateBookingStatus = async (req, res) => {
         }
         
         const updatedBooking = await bookingRepository.updateStatus(bookingId, status);
+
+        const bookingDate = new Date(booking.date).toISOString().split('T')[0];
+        const cacheKeyPattern = `availability:${booking.provider_id}:${bookingDate}:*`;
+        const keys = await redisClient.keys(cacheKeyPattern);
+        if (keys.length > 0) {
+            console.log("INVALIDANDO CACHE:", keys);
+            await redisClient.del(keys);
+        }
+        
         res.status(200).json(updatedBooking);
 
     } catch (error) {
         res.status(500).json({ message: "Erro ao atualizar o status da reserva.", error: error.message });
     }
 };
+

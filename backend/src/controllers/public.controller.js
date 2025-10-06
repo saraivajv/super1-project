@@ -1,3 +1,4 @@
+import redisClient from '../redis.js';
 import * as availabilityRepository from '../repositories/availability.repository.js';
 import * as bookingRepository from '../repositories/booking.repository.js';
 import * as serviceRepository from '../repositories/service.repository.js';
@@ -40,9 +41,17 @@ export const getAvailableSlots = async (req, res) => {
         return res.status(400).json({ message: "A data e a duração do serviço são obrigatórias." });
     }
 
+    const cacheKey = `availability:${providerId}:${date}:${duration}`;
+
     try {
+        const cachedSlots = await redisClient.get(cacheKey);
+        if (cachedSlots) {
+            console.log("CACHE HIT:", cacheKey);
+            return res.status(200).json(JSON.parse(cachedSlots));
+        }
+
+        console.log("CACHE MISS:", cacheKey);
         const dayOfWeek = new Date(date + 'T00:00:00Z').getUTCDay();
-        
         const providerSchedule = await availabilityRepository.findAvailabilityByDay(providerId, dayOfWeek);
         
         if (!providerSchedule) {
@@ -79,6 +88,10 @@ export const getAvailableSlots = async (req, res) => {
 
             currentTime.setMinutes(currentTime.getMinutes() + slotInterval);
         }
+
+        await redisClient.set(cacheKey, JSON.stringify(slots), {
+            EX: 300
+        });
 
         res.status(200).json(slots);
 
