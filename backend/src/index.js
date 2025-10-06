@@ -7,6 +7,8 @@ import bookingRoutes from './routes/booking.routes.js';
 import providerRoutes from './routes/provider.routes.js';
 import publicRoutes from './routes/public.routes.js';
 import reviewRoutes from './routes/review.routes.js';
+import searchRoutes from './routes/search.routes.js';
+import { ensureIndexExists } from './services/indexing.service.js';
 
 const app = express();
 const port = process.env.BACKEND_PORT || 3000;
@@ -19,6 +21,7 @@ app.use('/api/provider', providerRoutes);
 app.use('/api', publicRoutes);
 app.use('/api', bookingRoutes);
 app.use('/api', reviewRoutes);
+app.use('/api', searchRoutes);
 
 
 app.get('/', (req, res) => {
@@ -27,5 +30,6 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => {
   console.log(`Backend server listening on http://localhost:${port}`);
+  ensureIndexExists();
 });
 

@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # Serviço do Backend (Node.js/Express)
   backend:
     build:
       context: ./backend
@@ -11,19 +10,21 @@ services:
       - "3000:3000"
     volumes:
       - ./backend:/app
-      - /app/node_modules # Anula a montagem da pasta local node_modules
+      - /app/node_modules
     env_file:
       - .env
     environment:
       - NODE_ENV=development
     depends_on:
-      - db
-      - cache
-      - elasticsearch
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
     networks:
       - app-network
 
-  # Serviço do Frontend (SvelteKit)
   frontend:
     build:
       context: ./frontend
@@ -38,7 +39,6 @@ services:
     networks:
       - app-network
 
-  # Serviço do Banco de Dados (PostgreSQL)
   db:
     image: postgres:15
     container_name: postgres_db
@@ -48,13 +48,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - app-network
 
-  # Serviço de Cache (Redis)
   cache:
     image: redis:latest
     container_name: redis_cache
@@ -63,7 +67,6 @@ services:
     networks:
       - app-network
 
-  # Serviço de Busca (Elasticsearch)
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
     container_name: elasticsearch_node
@@ -76,6 +79,11 @@ services:
     ports:
       - "9200:9200"
       - "9300:9300"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
     networks:
       - app-network
 

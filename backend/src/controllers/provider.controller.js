@@ -1,6 +1,7 @@
 import * as availabilityRepo from '../repositories/availability.repository.js';
 import * as providerRepo from '../repositories/provider.repository.js';
 import * as serviceRepo from '../repositories/service.repository.js';
+import { deleteServiceFromIndex, indexService } from '../services/indexing.service.js';
 
 // --- Serviços ---
 
@@ -31,10 +32,11 @@ export const createService = async (req, res) => {
             provider_id: provider.id 
         };
         
-        // // Adicionamos um log para depuração, para ver exatamente o que está a ser enviado.
-        // console.log("Dados para criar o serviço:", serviceData);
-
         const newService = await serviceRepo.create(serviceData);
+
+        // Após criar no DB, indexa no Elasticsearch
+        await indexService(newService.id);
+
         res.status(201).json(newService);
     } catch (error) {
         console.error("Erro no controlador createService:", error);
@@ -45,11 +47,18 @@ export const createService = async (req, res) => {
 export const updateService = async (req, res) => {
     try {
         const provider = await providerRepo.findByUserId(req.user.id);
+        if (!provider) {
+            return res.status(404).json({ message: "Perfil de prestador não encontrado." });
+        }
         const service = await serviceRepo.findByIdAndProviderId(req.params.id, provider.id);
         if (!service) {
             return res.status(404).json({ message: "Serviço não encontrado ou não pertence a você." });
         }
         const updatedService = await serviceRepo.update(req.params.id, req.body);
+        
+        // Após atualizar no DB, reindexa no Elasticsearch
+        await indexService(updatedService.id);
+
         res.status(200).json(updatedService);
     } catch (error) {
         res.status(500).json({ message: "Erro ao atualizar serviço.", error: error.message });
@@ -59,11 +68,19 @@ export const updateService = async (req, res) => {
 export const deleteService = async (req, res) => {
     try {
         const provider = await providerRepo.findByUserId(req.user.id);
+        if (!provider) {
+            return res.status(404).json({ message: "Perfil de prestador não encontrado." });
+        }
         const service = await serviceRepo.findByIdAndProviderId(req.params.id, provider.id);
         if (!service) {
             return res.status(404).json({ message: "Serviço não encontrado ou não pertence a você." });
         }
-        await serviceRepo.remove(req.params.id);
+        const serviceId = req.params.id;
+        await serviceRepo.remove(serviceId);
+
+        // Após apagar do DB, remove do Elasticsearch
+        await deleteServiceFromIndex(serviceId);
+
         res.status(204).send();
     } catch (error) {
         res.status(500).json({ message: "Erro ao apagar serviço.", error: error.message });
@@ -100,7 +117,6 @@ export const updateServiceVariation = async (req, res) => {
             return res.status(404).json({ message: "Variação não encontrada." });
         }
 
-        // Verifica se a variação pertence a um serviço do prestador logado
         const service = await serviceRepo.findByIdAndProviderId(variation.service_id, provider.id);
         if (!service) {
             return res.status(403).json({ message: "Você não tem permissão para editar esta variação." });
@@ -126,7 +142,6 @@ export const deleteServiceVariation = async (req, res) => {
             return res.status(404).json({ message: "Variação não encontrada." });
         }
 
-        // Verifica se a variação pertence a um serviço do prestador logado
         const service = await serviceRepo.findByIdAndProviderId(variation.service_id, provider.id);
         if (!service) {
             return res.status(403).json({ message: "Você não tem permissão para apagar esta variação." });
